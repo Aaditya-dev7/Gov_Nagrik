@@ -18,7 +18,6 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const CLIENT_APP_URL = (import.meta as any).env?.VITE_CLIENT_APP_URL || `${window.location.origin}/Client-Nagrik/`;
 
   const pageTitle = currentPage.charAt(0).toUpperCase() + currentPage.slice(1);
 
@@ -64,13 +63,7 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
             />
           </div>
 
-          {/* Citizen Portal Link */}
-          <a
-            href={CLIENT_APP_URL}
-            className="hidden sm:inline px-3 py-1.5 rounded-full border border-border text-sm text-foreground hover:bg-primary-light"
-          >
-            Citizen Portal
-          </a>
+
 
           {/* Notifications */}
           <div className="relative" ref={dropdownRef}>
