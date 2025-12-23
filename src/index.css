@@ -1,0 +1,356 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 
+  NagrikGPT Government Portal Design System
+  A professional, trustworthy government-grade design
+*/
+
+@layer base {
+  :root {
+    /* Government Blue - Authority & Trust */
+    --primary: 217 91% 40%;
+    --primary-hover: 217 91% 35%;
+    --primary-light: 217 91% 95%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Background Hierarchy */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    /* Secondary Colors */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    /* Status Colors */
+    --success: 142 76% 36%;
+    --success-light: 142 76% 95%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-light: 38 92% 95%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-light: 0 84% 95%;
+    --destructive-foreground: 0 0% 100%;
+
+    --info: 199 89% 48%;
+    --info-light: 199 89% 95%;
+    
+    /* Priority Colors */
+    --urgent: 0 84% 60%;
+    --high: 25 95% 53%;
+    --medium: 38 92% 50%;
+    --low: 142 76% 36%;
+
+    /* Borders & Inputs */
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 40%;
+    --radius: 0.5rem;
+
+    /* Sidebar */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 96%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 32% 17%;
+    --sidebar-accent-foreground: 210 40% 96%;
+    --sidebar-border: 217 32% 17%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Motion System */
+    --duration-fast: 150ms;
+    --duration-normal: 200ms;
+    --duration-slow: 300ms;
+    --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+    --easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+    --easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(0 0% 0% / 0.05);
+    --shadow: 0 4px 6px -1px hsl(0 0% 0% / 0.1), 0 2px 4px -2px hsl(0 0% 0% / 0.1);
+    --shadow-md: 0 10px 15px -3px hsl(0 0% 0% / 0.1), 0 4px 6px -4px hsl(0 0% 0% / 0.1);
+    --shadow-lg: 0 20px 25px -5px hsl(0 0% 0% / 0.1), 0 8px 10px -6px hsl(0 0% 0% / 0.1);
+  }
+
+  .dark {
+    --background: 222 47% 5%;
+    --foreground: 210 40% 98%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 8%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+    --primary-light: 217 91% 15%;
+    --secondary: 217 32% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 32% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 32% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62% 30%;
+    --destructive-light: 0 62% 15%;
+    --destructive-foreground: 210 40% 98%;
+    --success-light: 142 76% 15%;
+    --warning-light: 38 92% 18%;
+    --info-light: 199 89% 18%;
+    --border: 217 32% 17%;
+    --input: 217 32% 17%;
+    --ring: 217 91% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  /* Focus Visible Styles for Accessibility */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/50;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+/* Animation Keyframes */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes scale-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer utilities {
+  /* Animation Utilities */
+  .animate-fade-in {
+    animation: fade-in var(--duration-normal) var(--easing-decelerate);
+  }
+
+  .animate-fade-out {
+    animation: fade-out var(--duration-normal) var(--easing-accelerate);
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right var(--duration-slow) var(--easing-decelerate);
+  }
+
+  .animate-slide-out-right {
+    animation: slide-out-right var(--duration-slow) var(--easing-accelerate);
+  }
+
+  .animate-scale-in {
+    animation: scale-in var(--duration-normal) var(--easing-decelerate);
+  }
+
+  .animate-scale-out {
+    animation: scale-out var(--duration-normal) var(--easing-accelerate);
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--muted-foreground) / 0.1) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .animate-pulse-soft {
+    animation: pulse-soft 2s ease-in-out infinite;
+  }
+
+  /* Page Transitions */
+  .page-enter {
+    animation: fade-in var(--duration-slow) var(--easing-decelerate);
+  }
+
+  .page-exit {
+    animation: fade-out var(--duration-normal) var(--easing-accelerate);
+  }
+
+  /* Interactive States */
+  .interactive {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .interactive:hover {
+    @apply translate-y-[-1px];
+  }
+
+  .interactive:active {
+    @apply translate-y-0;
+  }
+
+  /* Skeleton Loading */
+  .skeleton {
+    @apply bg-muted animate-shimmer rounded;
+  }
+
+  .skeleton-text {
+    @apply h-4 w-full skeleton;
+  }
+
+  .skeleton-circle {
+    @apply rounded-full skeleton;
+  }
+
+  /* Glass Effect */
+  .glass {
+    @apply bg-background/80 backdrop-blur-sm;
+  }
+
+  /* Government Seal Pattern Background */
+  .gov-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+}
+
+/* Leaflet Map Fixes */
+.leaflet-container {
+  @apply rounded-lg z-0;
+  font-family: inherit;
+}
+
+.leaflet-control-zoom {
+  @apply border-none shadow-md;
+}
+
+.leaflet-control-zoom a {
+  @apply bg-card text-foreground border-border;
+}
+
+.leaflet-popup-content-wrapper {
+  @apply bg-card text-foreground rounded-lg shadow-lg;
+}
+
+.leaflet-popup-tip {
+  @apply bg-card;
+}
