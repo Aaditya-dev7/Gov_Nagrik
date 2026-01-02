@@ -35,7 +35,7 @@ const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
 
 export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned }: DashboardPageProps) {
   const { user, isAdmin } = useAuth();
-  const { reports, notifications } = useReports();
+  const { reports, notifications, requestAssignment } = useReports();
 
   // Calculate stats
   const base = isAdmin ? reports : reports.filter(r => r.assigned_officer_id === user?.id);
@@ -58,7 +58,16 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
     .slice(0, 5);
 
   // Get recent alerts (unread notifications)
-  const recentAlerts = notifications.filter(n => !n.read).slice(0, 5);
+  const recentAlerts = ((): typeof notifications => {
+    const unread = notifications.filter(n => !n.read);
+    if (user?.role === 'Super Admin') return unread.slice(0, 5);
+    return unread
+      .filter(n => {
+        const rep = reports.find(r => r.report_id === n.report_id);
+        return rep && rep.assigned_department === user?.department;
+      })
+      .slice(0, 5);
+  })();
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -172,17 +181,36 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
                 No new alerts
               </p>
             ) : (
-              recentAlerts.map((alert) => (
-                <div
-                  key={alert.id}
-                  className="p-3 rounded-lg bg-warning-light border border-warning/20"
-                >
-                  <p className="text-sm mb-1">{alert.message}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {timeAgo(alert.timestamp)}
-                  </p>
-                </div>
-              ))
+              recentAlerts.map((alert) => {
+                const rep = reports.find(r => r.report_id === alert.report_id);
+                return (
+                  <div
+                    key={alert.id}
+                    className="p-3 rounded-lg bg-warning-light border border-warning/20"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm mb-1">{alert.message}</p>
+                        <p className="text-xs text-muted-foreground">{timeAgo(alert.timestamp)}</p>
+                        {rep && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Dept: <span className="font-medium">{rep.assigned_department}</span>
+                          </div>
+                        )}
+                      </div>
+                      {user?.role !== 'Super Admin' && user?.role !== 'Department Admin' && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => requestAssignment(alert.report_id, user?.name || 'Officer')}
+                        >
+                          Request assignment
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </CardContent>
         </Card>

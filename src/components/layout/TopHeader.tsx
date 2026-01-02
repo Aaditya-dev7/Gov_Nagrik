@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useReports } from '@/contexts/ReportsContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,7 @@ interface TopHeaderProps {
 }
 
 export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHeaderProps) {
-  const { notifications, markNotificationRead, unreadCount } = useReports();
+  const { notifications, markNotificationRead, unreadCount, reports, requestAssignment } = useReports() as any;
   const { user, isAdmin } = useAuth();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -26,6 +26,16 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
   const roleBadgeClass = isAdmin
     ? 'bg-primary text-primary-foreground'
     : (user?.role === 'Field Officer' ? 'bg-success text-success-foreground' : 'bg-secondary text-secondary-foreground');
+
+  const filteredNotifications = useMemo(() => {
+    if (user?.role === 'Super Admin') return notifications;
+    return notifications.filter((n) => {
+      const rep = (reports || []).find((r: any) => r.report_id === n.report_id);
+      return rep && rep.assigned_department === user?.department;
+    });
+  }, [notifications, reports, user?.role, user?.department]);
+
+  const filteredUnreadCount = useMemo(() => filteredNotifications.filter(n => !n.read).length, [filteredNotifications]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -84,9 +94,9 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
               aria-expanded={isNotificationsOpen}
             >
               <Bell className="w-5 h-5" />
-              {unreadCount > 0 && (
+              {filteredUnreadCount > 0 && (
                 <span className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs font-medium rounded-full flex items-center justify-center animate-pulse-soft">
-                  {unreadCount}
+                  {filteredUnreadCount}
                 </span>
               )}
             </Button>
@@ -106,24 +116,43 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
                   </Button>
                 </div>
                 <div className="max-h-80 overflow-y-auto">
-                  {notifications.length === 0 ? (
+                  {filteredNotifications.length === 0 ? (
                     <p className="p-4 text-center text-muted-foreground text-sm">
                       No notifications
                     </p>
                   ) : (
-                    notifications.map((notif) => (
-                      <button
-                        key={notif.id}
-                        onClick={() => handleNotificationClick(notif.id, notif.report_id)}
-                        className={cn(
-                          "w-full p-3 text-left hover:bg-accent transition-colors border-b last:border-0",
-                          !notif.read && "bg-primary-light"
-                        )}
-                      >
-                        <p className="text-sm mb-1">{notif.message}</p>
-                        <p className="text-xs text-muted-foreground">{timeAgo(notif.timestamp)}</p>
-                      </button>
-                    ))
+                    filteredNotifications.map((notif) => {
+                      const rep = (reports || []).find((r: any) => r.report_id === notif.report_id);
+                      return (
+                        <div
+                          key={notif.id}
+                          className={cn(
+                            "w-full p-3 transition-colors border-b last:border-0",
+                            !notif.read && "bg-primary-light"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm mb-1">{notif.message}</p>
+                              <p className="text-xs text-muted-foreground">{timeAgo(notif.timestamp)}</p>
+                              {rep && (
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  Dept: <span className="font-medium">{rep.assigned_department}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button size="sm" onClick={() => handleNotificationClick(notif.id, notif.report_id)}>Open</Button>
+                              {!isAdmin && (
+                                <Button size="sm" variant="secondary" onClick={() => requestAssignment(notif.report_id, user?.name || 'Officer')}>
+                                  Request
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
