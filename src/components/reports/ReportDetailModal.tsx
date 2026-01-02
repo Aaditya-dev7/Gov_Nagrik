@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReports } from '@/contexts/ReportsContext';
 import { Report } from '@/lib/types';
@@ -27,6 +27,8 @@ import {
   X,
   Trash2
 } from 'lucide-react';
+import { correctDescription, analyzeImageDescription } from '@/lib/ai';
+import { reverseGeocode, isCoordinateInIndia } from '@/lib/geocoding';
 
 interface ReportDetailModalProps {
   report: Report | null;
@@ -35,7 +37,7 @@ interface ReportDetailModalProps {
 }
 
 export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailModalProps) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { updateReportStatus, addProgressNote, updateAssignment, deleteReport } = useReports();
   const { toast } = useToast();
   
@@ -45,6 +47,47 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const [progressNote, setProgressNote] = useState('');
   const [notifyCitizen, setNotifyCitizen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const [aiLoading, setAiLoading] = useState(false);
+  const [corrected, setCorrected] = useState<string | null>(null);
+  const [imgCheck, setImgCheck] = useState<{ ok: boolean; score?: number; reason?: string } | null>(null);
+  const [revAddr, setRevAddr] = useState<string | null>(null);
+  const [inIndia, setInIndia] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!open || !report) return;
+    let cancelled = false;
+    setAiLoading(true);
+    (async () => {
+      try {
+        const [corr, img, rev] = await Promise.all([
+          correctDescription(report.description).catch(() => ({ corrected: report.description, applied: false })),
+          analyzeImageDescription(report.media || [], report.description).catch(() => ({ ok: true })),
+          reverseGeocode(report.lat, report.lng).catch(() => null),
+        ]);
+        if (cancelled) return;
+        setCorrected(corr.corrected || report.description);
+        setImgCheck(img);
+        setRevAddr(rev);
+        setInIndia(isCoordinateInIndia(report.lat, report.lng));
+      } finally {
+        if (!cancelled) setAiLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, report]);
+
+  const copyCorrected = async () => {
+    try { if (corrected) await navigator.clipboard.writeText(corrected); } catch {}
+  };
+
+  const tokenOverlap = (a?: string | null, b?: string | null) => {
+    const tok = (s?: string | null) => (s || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length >= 4);
+    const A = new Set(tok(a));
+    const B = new Set(tok(b));
+    let overlap = 0; for (const t of A) if (B.has(t)) overlap++;
+    return { overlap, aSize: A.size, bSize: B.size };
+  };
 
   if (!report) return null;
 
@@ -178,6 +221,50 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
               <p className="text-sm">{report.summary}</p>
             </div>
 
+            <div className="rounded-lg p-4 border bg-muted/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium">AI Analysis</span>
+              </div>
+              {aiLoading ? (
+                <p className="text-sm text-muted-foreground">Analyzing…</p>
+              ) : (
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <div className="font-medium">Corrected Description</div>
+                    <div className="mt-1 text-muted-foreground whitespace-pre-wrap">{corrected || report.description}</div>
+                    {corrected && corrected !== report.description && (
+                      <div className="mt-2">
+                        <Button size="sm" onClick={copyCorrected}>Copy correction</Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium">Image ↔ Description</div>
+                    {imgCheck?.ok ? (
+                      <Badge variant="secondary">Looks consistent{typeof imgCheck?.score === 'number' ? ` • score ${Math.round((imgCheck.score || 0) * 100)}%` : ''}</Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-destructive-light text-destructive border-destructive/30">Mismatch{imgCheck?.reason ? ` • ${imgCheck.reason}` : ''}</Badge>
+                    )}
+                  </div>
+                  <div>
+                    <div className="font-medium">Location Verification</div>
+                    <div className="mt-1 text-muted-foreground">
+                      <div>India: {inIndia ? 'Yes' : 'No'}</div>
+                      {revAddr && (
+                        <div>Reverse geocoded: {revAddr}</div>
+                      )}
+                      {revAddr && report.location_text && (() => {
+                        const o = tokenOverlap(report.location_text, revAddr);
+                        const similar = o.aSize >= 3 ? o.overlap > 0 : true;
+                        return <div>Matches entered location: {similar ? 'Likely' : 'Low similarity'}</div>;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Media */}
             <div>
               <h4 className="font-semibold mb-2">Media</h4>
@@ -222,47 +309,63 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             {/* Assignment */}
             <div className="space-y-3">
               <h4 className="font-semibold">Assignment</h4>
-              <div className="space-y-2">
-                <Label>Department</Label>
-                <Select defaultValue={report.assigned_department || 'unassigned'} onValueChange={(val) => {
-                  const dep = val === 'unassigned' ? 'Administration' : val;
-                  updateAssignment(report.report_id, { department: dep, actor: user?.name || 'System' });
-                  toast({ title: 'Assignment Updated', description: `Department set to ${dep}` });
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {mockDepartments.map(dept => (
-                      <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Officer</Label>
-                <Select defaultValue={report.assigned_officer_id || 'unassigned'} onValueChange={(val) => {
-                  if (val === 'unassigned') {
-                    updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
-                    toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
-                  } else {
-                    const officer = mockUsers.find(o => o.id === val);
-                    updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
-                    toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
-                  }
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Unassigned" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {mockUsers.filter(u => u.role === 'Field Officer' || u.role === 'Department Admin').map(officer => (
-                      <SelectItem key={officer.id} value={officer.id}>{officer.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {isAdmin ? (
+                <>
+                  <div className="space-y-2">
+                    <Label>Department</Label>
+                    <Select defaultValue={report.assigned_department || 'unassigned'} onValueChange={(val) => {
+                      const dep = val === 'unassigned' ? 'Administration' : val;
+                      updateAssignment(report.report_id, { department: dep, actor: user?.name || 'System' });
+                      toast({ title: 'Assignment Updated', description: `Department set to ${dep}` });
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {mockDepartments.map(dept => (
+                          <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Officer</Label>
+                    <Select defaultValue={report.assigned_officer_id || 'unassigned'} onValueChange={(val) => {
+                      if (val === 'unassigned') {
+                        updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
+                        toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
+                      } else {
+                        const officer = mockUsers.find(o => o.id === val);
+                        updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
+                        toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
+                      }
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Unassigned" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Unassigned</SelectItem>
+                        {mockUsers.filter(u => u.role === 'Field Officer' || u.role === 'Department Admin').map(officer => (
+                          <SelectItem key={officer.id} value={officer.id}>{officer.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-2">
+                  <div>
+                    <Label>Department</Label>
+                    <div className="mt-1 text-sm p-2 rounded border bg-muted/30">{report.assigned_department || 'Administration'}</div>
+                  </div>
+                  <div>
+                    <Label>Officer</Label>
+                    <div className="mt-1 text-sm p-2 rounded border bg-muted/30">{report.assigned_officer_name || 'Unassigned'}</div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Assignment is locked for Officers.</p>
+                </div>
+              )}
             </div>
 
             <Separator />

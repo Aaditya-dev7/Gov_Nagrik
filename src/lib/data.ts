@@ -218,7 +218,8 @@ export const govEmailDomains = [
   'india.gov.in',
   'nagarpalika.gov.in',
   'maha.gov.in',
-  'maharashtra.gov.in'
+  'maharashtra.gov.in',
+  'comp.sce.edu.in'
 ];
 
 export function isValidGovEmail(email: string): boolean {

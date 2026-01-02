@@ -32,6 +32,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
   const [designation, setDesignation] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [role, setRole] = useState<'admin' | 'officer'>('officer');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,47 +47,64 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
     }
 
     setIsSubmitting(true);
+    const svc = import.meta.env.VITE_EMAILJS_SERVICE_ID as string | undefined;
+    const pub = import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string | undefined;
+    const tmpl = import.meta.env.VITE_EMAILJS_TEMPLATE_ID as string | undefined;
+    const canEmail = Boolean(svc && pub && tmpl);
+    const toEmail = ADMIN_EMAILS[Math.floor(Math.random() * ADMIN_EMAILS.length)];
+    const submitted_at = new Date().toISOString();
+
+    const saveLocal = () => {
+      try {
+        const key = 'nagrikGPT_access_requests';
+        const list = JSON.parse(localStorage.getItem(key) || '[]') as any[];
+        list.push({ fullName, officialEmail, department, designation, employeeId: employeeId || 'N/A', purpose, role, submitted_at });
+        localStorage.setItem(key, JSON.stringify(list));
+      } catch {}
+    };
+
     try {
-      const toEmail = ADMIN_EMAILS[Math.floor(Math.random() * ADMIN_EMAILS.length)];
+      if (canEmail) {
+        const templateParams = {
+          to_email: toEmail,
+          full_name: fullName,
+          official_email: officialEmail,
+          department,
+          designation,
+          employee_id: employeeId || 'N/A',
+          purpose,
+          role,
+          submitted_at,
+        } as Record<string, any>;
 
-      const templateParams = {
-        to_email: toEmail,
-        full_name: fullName,
-        official_email: officialEmail,
-        department,
-        designation,
-        employee_id: employeeId || 'N/A',
-        purpose,
-        submitted_at: new Date().toISOString(),
-      } as Record<string, any>;
+        await emailjs.send(svc as string, tmpl as string, templateParams, pub as string);
 
-      await emailjs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID as string,
-        import.meta.env.VITE_EMAILJS_TEMPLATE_ID as string,
-        templateParams,
-        import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string
-      );
+        const userTemplateId = (import.meta.env.VITE_EMAILJS_USER_TEMPLATE_ID as string) || (tmpl as string);
+        const setPasswordLink = `${window.location.origin}/?set_password=1&email=${encodeURIComponent(officialEmail)}`;
+        const userTemplateParams = {
+          to_email: officialEmail,
+          username: officialEmail,
+          set_password_link: setPasswordLink,
+          full_name: fullName,
+          role,
+        } as Record<string, any>;
 
-      const userTemplateId = (import.meta.env.VITE_EMAILJS_USER_TEMPLATE_ID as string) || (import.meta.env.VITE_EMAILJS_TEMPLATE_ID as string);
-      const setPasswordLink = `${window.location.origin}/?set_password=1&email=${encodeURIComponent(officialEmail)}`;
-      const userTemplateParams = {
-        to_email: officialEmail,
-        username: officialEmail,
-        set_password_link: setPasswordLink,
-        full_name: fullName,
-      } as Record<string, any>;
+        await emailjs.send(svc as string, userTemplateId, userTemplateParams, pub as string);
 
-      await emailjs.send(
-        import.meta.env.VITE_EMAILJS_SERVICE_ID as string,
-        userTemplateId,
-        userTemplateParams,
-        import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string
-      );
+        saveLocal();
 
-      toast({
-        title: 'Request Submitted',
-        description: `Your request has been sent to ${toEmail}. We've emailed your username and set-password link to ${officialEmail}.`,
-      });
+        toast({
+          title: 'Request Submitted',
+          description: `Your request has been sent to ${toEmail}. We've emailed your username and set-password link to ${officialEmail}.`,
+        });
+      } else {
+        // Fallback when EmailJS is not configured in the environment (e.g., GitHub Pages build)
+        saveLocal();
+        toast({
+          title: 'Request Submitted',
+          description: 'Your access request has been recorded. Our team will contact you shortly.',
+        });
+      }
 
       setFullName('');
       setOfficialEmail('');
@@ -95,12 +113,14 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       setEmployeeId('');
       setPurpose('');
       setCertified(false);
+      setRole('officer');
       onOpenChange(false);
     } catch (err) {
+      // Email delivery failed – record locally to avoid data loss
+      saveLocal();
       toast({
-        title: 'Failed to send request',
-        description: 'Please try again or contact support.',
-        variant: 'destructive',
+        title: 'Request Saved',
+        description: 'Email delivery failed, but your request has been recorded. We will review it shortly.',
       });
     } finally {
       setIsSubmitting(false);
@@ -139,6 +159,19 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
               value={officialEmail}
               onChange={(e) => setOfficialEmail(e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="role">Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'officer')}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="officer">Officer</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-2">

@@ -4,10 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Mail, Lock, Eye, EyeOff, Shield, Zap, Globe, Loader2 } from 'lucide-react';
 import { AccessRequestModal } from './AccessRequestModal';
 import { SetPasswordModal } from './SetPasswordModal';
+import { mockUsers } from '@/lib/data';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -20,6 +22,14 @@ export function LoginPage() {
   const [showAccessModal, setShowAccessModal] = useState(false);
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [passwordEmail, setPasswordEmail] = useState('');
+  const [roleInfo, setRoleInfo] = useState<{ kind: 'admin' | 'officer'; department?: string } | null>(null);
+  const [roleSelection, setRoleSelection] = useState<'admin' | 'officer'>(() => {
+    try {
+      const saved = localStorage.getItem('nagrikGPT_login_role');
+      if (saved === 'admin' || saved === 'officer') return saved;
+    } catch {}
+    return 'officer';
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -31,11 +41,66 @@ export function LoginPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const emailTrim = email.trim().toLowerCase();
+    if (!emailTrim || !emailTrim.includes('@')) { setRoleInfo(null); return; }
+    let role: 'admin' | 'officer' | null = null;
+    let dept: string | undefined;
+
+    // 1) Prefer explicit access request mapping (most up-to-date intent)
+    try {
+      const reqRaw = localStorage.getItem('nagrikGPT_access_requests');
+      if (reqRaw) {
+        const reqs = JSON.parse(reqRaw) as any[];
+        const req = reqs.slice().reverse().find(r => ((r.officialEmail || r.email || '').toLowerCase() === emailTrim));
+        if (req) {
+          const rr = String(req.role || '').toLowerCase();
+          if (rr === 'admin') role = 'admin';
+          else if (rr === 'officer') role = 'officer';
+          dept = req.department || dept;
+        }
+      }
+    } catch {}
+
+    // 2) Then check mock users
+    if (!role) {
+      const m = mockUsers.find(u => (u.email || '').toLowerCase() === emailTrim);
+      if (m) {
+        const r = String((m as any).role || '').toLowerCase();
+        if (r.includes('admin')) role = 'admin';
+        else if (r.includes('officer')) role = 'officer';
+        dept = (m as any).department;
+      }
+    }
+
+    // 3) Lastly, check cached dynamic users
+    if (!role) {
+      try {
+        const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
+        if (dynRaw) {
+          const dyn = JSON.parse(dynRaw) as any[];
+          const du = dyn.find(u => (u.email || '').toLowerCase() === emailTrim);
+          if (du) {
+            const r = String(du.role || '').toLowerCase();
+            if (r.includes('admin')) role = 'admin';
+            else if (r.includes('officer')) role = 'officer';
+            dept = du.department || dept;
+          }
+        }
+      } catch {}
+    }
+    if (role) setRoleInfo({ kind: role, department: dept }); else setRoleInfo(null);
+  }, [email]);
+
+  useEffect(() => {
+    try { localStorage.setItem('nagrikGPT_login_role', roleSelection); } catch {}
+  }, [roleSelection]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const result = await login(email, password, rememberMe);
+    const result = await login(email, password, rememberMe, roleSelection);
     
     if (result.success) {
       toast({
@@ -110,6 +175,18 @@ export function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
+              <Label htmlFor="role">Sign in as</Label>
+              <Select value={roleSelection} onValueChange={(v) => setRoleSelection(v as 'admin' | 'officer')}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="officer">Officer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="email">Official Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -124,6 +201,16 @@ export function LoginPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">Use your official government email address</p>
+              {roleInfo && (
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className={roleInfo.kind === 'admin' ? 'inline-flex items-center text-xs px-2 py-0.5 rounded-full border border-primary/30 bg-primary/10 text-primary' : 'inline-flex items-center text-xs px-2 py-0.5 rounded-full border border-success/30 bg-success/10 text-success'}>
+                    {roleInfo.kind === 'admin' ? 'Admin' : 'Officer'}
+                  </span>
+                  {roleInfo.department ? (
+                    <span className="text-xs text-muted-foreground">Dept: {roleInfo.department}</span>
+                  ) : null}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

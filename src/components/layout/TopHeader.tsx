@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Bell, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/data';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface TopHeaderProps {
   currentPage: string;
@@ -15,11 +16,16 @@ interface TopHeaderProps {
 
 export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHeaderProps) {
   const { notifications, markNotificationRead, unreadCount } = useReports();
+  const { user, isAdmin } = useAuth();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const pageTitle = currentPage.charAt(0).toUpperCase() + currentPage.slice(1);
+  const roleLabel = isAdmin ? 'Admin' : (user?.role === 'Field Officer' ? 'Officer' : (user?.role || 'User'));
+  const roleBadgeClass = isAdmin
+    ? 'bg-primary text-primary-foreground'
+    : (user?.role === 'Field Officer' ? 'bg-success text-success-foreground' : 'bg-secondary text-secondary-foreground');
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -46,8 +52,9 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
     <header className="sticky top-0 z-30 bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 border-b px-6 py-4 pl-16 lg:pl-6">
       <div className="flex items-center justify-between gap-4">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold text-foreground">{pageTitle}</h1>
+          <Badge className={roleBadgeClass}>{roleLabel}</Badge>
         </div>
 
         {/* Right Actions */}

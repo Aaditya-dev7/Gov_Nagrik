@@ -34,16 +34,17 @@ const statCards = [
 const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
 
 export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned }: DashboardPageProps) {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const { reports, notifications } = useReports();
 
   // Calculate stats
+  const base = isAdmin ? reports : reports.filter(r => r.assigned_officer_id === user?.id);
   const stats = {
-    total: reports.length,
-    pending: reports.filter(r => r.status === 'Pending').length,
-    inProgress: reports.filter(r => r.status === 'In Progress').length,
-    resolved: reports.filter(r => r.status === 'Resolved').length,
-    urgent: reports.filter(r => r.priority === 'Urgent').length,
+    total: base.length,
+    pending: base.filter(r => r.status === 'Pending').length,
+    inProgress: base.filter(r => r.status === 'In Progress').length,
+    resolved: base.filter(r => r.status === 'Resolved').length,
+    urgent: base.filter(r => r.priority === 'Urgent').length,
   };
 
   // Get assigned reports for current user and apply dashboard filter

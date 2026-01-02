@@ -12,20 +12,15 @@ import { UsersPage } from './pages/UsersPage';
 import { DepartmentsPage } from './pages/DepartmentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ReportDetailModal } from './reports/ReportDetailModal';
+import { ProfilePage } from './pages/ProfilePage';
 import { cn } from '@/lib/utils';
 import { MobileBottomNav } from './layout/MobileBottomNav';
+import { OfficersPage } from './pages/OfficersPage';
 
 export function MainApp() {
   const { isAdmin, user } = useAuth();
   const { reports } = useReports();
-  const [currentPage, setCurrentPage] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('admin:lastPage');
-      return saved || 'dashboard';
-    } catch {
-      return 'dashboard';
-    }
-  });
+  const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [dashboardFilter, setDashboardFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -38,14 +33,33 @@ export function MainApp() {
       return;
     }
     if (page === 'reports') {
-      setAssignedOnlyUserId(null);
+      setAssignedOnlyUserId(isAdmin ? null : (user?.id ?? null));
     }
     setCurrentPage(page);
   };
 
+  // Load last page for role and ensure correct landing page after login/role change
   useEffect(() => {
-    try { localStorage.setItem('admin:lastPage', currentPage); } catch {}
-  }, [currentPage]);
+    try {
+      const key = isAdmin ? 'admin:lastPage' : 'officer:lastPage';
+      const saved = localStorage.getItem(key);
+      if (saved) setCurrentPage(saved);
+    } catch {}
+
+    const adminOnly = ['users', 'departments', 'officers'];
+    if (!isAdmin && adminOnly.includes(currentPage)) {
+      setCurrentPage('dashboard');
+      try { localStorage.setItem(isAdmin ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
+    }
+    if (user && !currentPage) {
+      setCurrentPage('dashboard');
+      try { localStorage.setItem(isAdmin ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
+    }
+  }, [user?.id, isAdmin]);
+
+  useEffect(() => {
+    try { localStorage.setItem(isAdmin ? 'admin:lastPage' : 'officer:lastPage', currentPage); } catch {}
+  }, [currentPage, isAdmin]);
 
   const handleOpenReport = (reportId: string) => {
     const report = reports.find(r => r.report_id === reportId);
@@ -93,8 +107,12 @@ export function MainApp() {
         return isAdmin ? <UsersPage /> : null;
       case 'departments':
         return isAdmin ? <DepartmentsPage /> : null;
+      case 'officers':
+        return isAdmin ? <OfficersPage /> : null;
       case 'settings':
         return <SettingsPage />;
+      case 'profile':
+        return <ProfilePage />;
       default:
         return (
           <DashboardPage 
@@ -117,6 +135,19 @@ export function MainApp() {
           onSearch={setSearchQuery}
           onNavigateToReport={handleNavigateToReport}
         />
+
+        {/* Role Banner for visual differentiation */}
+        <div className="px-4 sm:px-6 lg:px-8 mt-2">
+          {isAdmin ? (
+            <div className="rounded-md border border-primary/30 bg-primary/10 text-primary px-3 py-2 text-sm">
+              Admin Portal
+            </div>
+          ) : (
+            <div className="rounded-md border border-success/30 bg-success/10 text-success px-3 py-2 text-sm">
+              Officer Portal
+            </div>
+          )}
+        </div>
 
         <main className="px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-28 sm:pb-12" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 6rem)' }}>
           {renderPage()}

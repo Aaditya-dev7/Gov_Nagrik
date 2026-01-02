@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, LayersControl } from 'react-leaflet';
 import { Icon, LatLngBounds } from 'leaflet';
 import { useReports } from '@/contexts/ReportsContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Report } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,8 @@ function MapController({ reports }: { reports: Report[] }) {
 
 // Separate component for report markers
 function ReportMarkers({ reports, onOpenReport }: { reports: Report[]; onOpenReport: (reportId: string) => void }) {
+  const { user, isAdmin } = useAuth();
+  const { requestAssignment } = useReports();
   const getMarkerColor = (priority: string) => {
     switch (priority) {
       case 'Urgent': return '#ef4444';
@@ -124,6 +127,16 @@ function ReportMarkers({ reports, onOpenReport }: { reports: Report[]; onOpenRep
                 <ExternalLink className="w-3 h-3 mr-1" />
                 Open Report
               </Button>
+              {!isAdmin && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full mt-2"
+                  onClick={() => requestAssignment(report.report_id, user?.name || 'Officer')}
+                >
+                  Request assignment
+                </Button>
+              )}
             </div>
           </Popup>
         </Marker>

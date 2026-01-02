@@ -17,6 +17,7 @@ interface NewReportData {
     phone: string | null;
     anonymous: boolean;
   };
+
 }
 
 function reportToDbRow(r: Report): Record<string, any> {
@@ -50,6 +51,7 @@ interface ReportsContextType {
   unreadCount: number;
   updateAssignment: (reportId: string, params: { department?: string; officerId?: string | null; officerName?: string | null; actor?: string }) => void;
   deleteReport: (reportId: string) => void;
+  requestAssignment: (reportId: string, actor: string) => void;
 }
 
 const ReportsContext = createContext<ReportsContextType | undefined>(undefined);
@@ -198,6 +200,16 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
         }
       } catch {}
       setReports(prev => [{ ...base }, ...prev.filter(r => r.report_id !== payload.new.id)]);
+      // Create a local notification so admins see new citizen submissions
+      const message = `New ${String(base.priority || '').toLowerCase()} report ${base.report_id} submitted`;
+      const notif: Notification = {
+        id: `notif-${Date.now()}`,
+        message,
+        timestamp: new Date().toISOString(),
+        read: false,
+        report_id: base.report_id,
+      };
+      setNotifications(prev => [notif, ...prev]);
     });
     chan.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reports' }, payload => {
       setReports(prev => prev.map(r => r.report_id === payload.new.id ? {
@@ -461,6 +473,28 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestAssignment = (reportId: string, actor: string) => {
+    const at = new Date().toISOString();
+    const action = `Assignment requested by ${actor}`;
+    setReports(prev => prev.map(r => r.report_id === reportId ? {
+      ...r,
+      timeline: [...r.timeline, { actor, action, at }]
+    } : r));
+    const notif: Notification = {
+      id: `notif-${Date.now()}`,
+      message: `${actor} requested assignment for ${reportId}`,
+      timestamp: at,
+      read: false,
+      report_id: reportId,
+    };
+    setNotifications(prev => [notif, ...prev]);
+    const sb = getSupabase();
+    if (sb) {
+      sb.from('report_timeline').insert({ report_id: reportId, actor, action, at })
+        .then(({ error }) => { if (error) { try { console.error('Supabase insert assignment request failed', error); } catch {} } });
+    }
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
@@ -473,7 +507,8 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       markNotificationRead,
       unreadCount,
       updateAssignment,
-      deleteReport
+      deleteReport,
+      requestAssignment
     }}>
       {children}
     </ReportsContext.Provider>

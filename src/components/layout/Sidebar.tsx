@@ -27,6 +27,7 @@ const navItems = [
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'map', label: 'Map', icon: Map, badge: 'Beta' },
   { id: 'heatmap', label: 'Heatmap', icon: Flame, badge: 'Beta' },
+  { id: 'officers', label: 'Officers', icon: Users, adminOnly: true },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'departments', label: 'Departments', icon: Building2, adminOnly: true },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -42,14 +43,16 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     setIsMobileOpen(false);
   };
 
-  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
+  const filteredNavItems = isAdmin
+    ? navItems
+    : navItems.filter(item => ['dashboard', 'reports', 'map'].includes(item.id));
 
   return (
     <>
-      {/* Mobile Toggle Button */}
+      {/* Mobile Toggle Button (hidden to disable sidebar on mobile) */}
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-sidebar text-sidebar-foreground rounded-lg shadow-lg"
+        className="hidden"
         aria-label="Open sidebar"
       >
         <Menu className="w-5 h-5" />

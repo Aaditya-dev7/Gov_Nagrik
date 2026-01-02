@@ -42,3 +42,51 @@ export async function geocodeAddress(query: string): Promise<{ lat: number; lng:
 
   return null;
 }
+
+export async function reverseGeocode(lat: number, lng: number): Promise<string | null> {
+  const key = `rev:${lat.toFixed(5)},${lng.toFixed(5)}`;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return raw;
+  } catch {}
+
+  try {
+    const url = `https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}&lang=en`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      const data = await res.json();
+      const prop = data?.features?.[0]?.properties;
+      const name = prop?.name || prop?.street || null;
+      const city = prop?.city || prop?.district || prop?.state || null;
+      const txt = [name, city].filter(Boolean).join(', ');
+      if (txt) {
+        try { localStorage.setItem(key, txt); } catch {}
+        return txt;
+      }
+    }
+  } catch {}
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`;
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      const data = await res.json();
+      const disp = data?.display_name as string | undefined;
+      if (disp) {
+        try { localStorage.setItem(key, disp); } catch {}
+        return disp;
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+function isWithinIndiaBBox(lat: number, lng: number): boolean {
+  return lat >= 6 && lat <= 37.1 && lng >= 68 && lng <= 97.5;
+}
+
+export function isCoordinateInIndia(lat: number, lng: number): boolean {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return isWithinIndiaBBox(lat, lng);
+}
