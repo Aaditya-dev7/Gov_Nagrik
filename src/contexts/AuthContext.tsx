@@ -130,7 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
           }
           let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-          const targetDept = mappedDept || existing.department || 'General';
+          const selectedLoginDept = ((): string | null => { try { return localStorage.getItem('nagrikGPT_login_dept') || null; } catch { return null; } })();
+          const targetDept = (mappedDept || selectedLoginDept || existing.department || 'General') as string;
           if (!dynUser) {
             dynUser = {
               id: `dyn-${Date.now()}`,
@@ -178,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Map role/department from access request, if any
       const reqListRaw = localStorage.getItem('nagrikGPT_access_requests');
       let mappedRole: User['role'] = (rolePref === 'admin') ? 'Department Admin' : (rolePref === 'officer') ? 'Field Officer' : 'Viewer';
-      let mappedDept = 'General';
+      let mappedDept = ((): string => { try { return (rolePref === 'admin' ? (localStorage.getItem('nagrikGPT_login_dept') || '') : '') || 'General'; } catch { return 'General'; } })();
       if (reqListRaw) {
         try {
           const reqs = JSON.parse(reqListRaw) as Array<{ officialEmail?: string; email?: string; role?: 'admin' | 'officer'; department?: string }>;
@@ -249,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
           const mappedRole: User['role'] = req.role === 'admin' ? 'Department Admin' : req.role === 'officer' ? 'Field Officer' : 'Viewer';
-          const mappedDept = req.department || 'General';
+          const mappedDept = req.department || ((): string => { try { return localStorage.getItem('nagrikGPT_login_dept') || 'General'; } catch { return 'General'; } })();
           if (!dynUser) {
             dynUser = {
               id: `dyn-${Date.now()}`,
@@ -308,7 +309,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
         }
         let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-        const targetDept = mappedDept || foundUser.department || 'General';
+        const selectedLoginDept = ((): string | null => { try { return localStorage.getItem('nagrikGPT_login_dept') || null; } catch { return null; } })();
+        const targetDept = (mappedDept || selectedLoginDept || foundUser.department || 'General') as string;
         if (!dynUser) {
           dynUser = {
             id: `dyn-${Date.now()}`,

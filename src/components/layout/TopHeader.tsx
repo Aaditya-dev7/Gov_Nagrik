@@ -28,7 +28,8 @@ export function TopHeader({ currentPage, onSearch, onNavigateToReport }: TopHead
     : (user?.role === 'Field Officer' ? 'bg-success text-success-foreground' : 'bg-secondary text-secondary-foreground');
 
   const filteredNotifications = useMemo(() => {
-    if (user?.role === 'Super Admin') return notifications;
+    const isGlobalAdmin = user?.role === 'Super Admin' || (user?.role === 'Department Admin' && user?.department === 'All Departments');
+    if (isGlobalAdmin) return notifications;
     return notifications.filter((n) => {
       const rep = (reports || []).find((r: any) => r.report_id === n.report_id);
       return rep && rep.assigned_department === user?.department;

@@ -60,7 +60,8 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
   // Get recent alerts (unread notifications)
   const recentAlerts = ((): typeof notifications => {
     const unread = notifications.filter(n => !n.read);
-    if (user?.role === 'Super Admin') return unread.slice(0, 5);
+    const isGlobalAdmin = user?.role === 'Super Admin' || (user?.role === 'Department Admin' && user?.department === 'All Departments');
+    if (isGlobalAdmin) return unread.slice(0, 5);
     return unread
       .filter(n => {
         const rep = reports.find(r => r.report_id === n.report_id);

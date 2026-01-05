@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
 import emailjs from '@emailjs/browser';
+import { mockDepartments } from '@/lib/data';
 
 interface AccessRequestModalProps {
   open: boolean;
@@ -80,7 +81,8 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
         await emailjs.send(svc as string, tmpl as string, templateParams, pub as string);
 
         const userTemplateId = (import.meta.env.VITE_EMAILJS_USER_TEMPLATE_ID as string) || (tmpl as string);
-        const setPasswordLink = `${window.location.origin}/?set_password=1&email=${encodeURIComponent(officialEmail)}`;
+        const baseUrl = (import.meta as any).env?.BASE_URL || '/';
+        const setPasswordLink = `${window.location.origin}${baseUrl}?set_password=1&email=${encodeURIComponent(officialEmail)}`;
         const userTemplateParams = {
           to_email: officialEmail,
           username: officialEmail,
@@ -181,12 +183,10 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
                 <SelectValue placeholder="Select Department" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="urban">Urban Development</SelectItem>
-                <SelectItem value="public-works">Public Works</SelectItem>
-                <SelectItem value="health">Health</SelectItem>
-                <SelectItem value="education">Education</SelectItem>
-                <SelectItem value="revenue">Revenue</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
+                <SelectItem value="All Departments">All Departments</SelectItem>
+                {mockDepartments.map((d) => (
+                  <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

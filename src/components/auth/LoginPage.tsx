@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Mail, Lock, Eye, EyeOff, Shield, Zap, Globe, Loader2 } from 'lucide-react';
 import { AccessRequestModal } from './AccessRequestModal';
 import { SetPasswordModal } from './SetPasswordModal';
-import { mockUsers } from '@/lib/data';
+import { mockUsers, mockDepartments } from '@/lib/data';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -29,6 +29,13 @@ export function LoginPage() {
       if (saved === 'admin' || saved === 'officer') return saved;
     } catch {}
     return 'officer';
+  });
+  const [adminDepartment, setAdminDepartment] = useState<string>(() => {
+    try {
+      return localStorage.getItem('nagrikGPT_login_dept') || '';
+    } catch {
+      return '';
+    }
   });
 
   useEffect(() => {
@@ -99,6 +106,12 @@ export function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+
+    if (roleSelection === 'admin') {
+      try {
+        localStorage.setItem('nagrikGPT_login_dept', adminDepartment || 'All Departments');
+      } catch {}
+    }
 
     const result = await login(email, password, rememberMe, roleSelection);
     
@@ -186,6 +199,22 @@ export function LoginPage() {
                 </SelectContent>
               </Select>
             </div>
+            {roleSelection === 'admin' && (
+              <div className="space-y-2">
+                <Label htmlFor="department">Department (Admin)</Label>
+                <Select value={adminDepartment} onValueChange={(v) => setAdminDepartment(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All Departments">All Departments</SelectItem>
+                    {mockDepartments.map((d) => (
+                      <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="email">Official Email</Label>
               <div className="relative">
