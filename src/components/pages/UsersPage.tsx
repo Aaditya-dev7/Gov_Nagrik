@@ -77,7 +77,7 @@ export function UsersPage() {
                     </Badge>
                   </td>
                   <td className="p-4">
-                    <Button variant="ghost" size="sm">
+                    <Button variant="ghost" size="sm" onClick={() => toast({ title: 'Coming Soon', description: 'Edit user will be available soon.' })}>
                       <Edit className="w-4 h-4" />
                     </Button>
                   </td>

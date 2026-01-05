@@ -45,6 +45,28 @@ export function OfficersPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      <Card>
+        <CardContent className="py-4">
+          <div className="flex flex-wrap gap-6">
+            <div>
+              <div className="text-xs text-muted-foreground">Total Reports</div>
+              <div className="text-2xl font-bold">{reports.length}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Pending</div>
+              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'Pending').length}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">In Progress</div>
+              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'In Progress').length}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Resolved</div>
+              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'Resolved').length}</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
         <h2 className="text-xl font-semibold">Officers</h2>
         <div className="relative w-full max-w-md">
