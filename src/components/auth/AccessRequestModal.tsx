@@ -8,8 +8,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-import emailjs from '@emailjs/browser';
 import { mockDepartments } from '@/lib/data';
+import { getSupabase } from '@/lib/supabase';
 
 interface AccessRequestModalProps {
   open: boolean;
@@ -47,13 +47,21 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       return;
     }
 
+    const allowedDomains = ['nagarpalika.gov.in', 'gov.in'];
+    const emailDomain = officialEmail.split('@')[1]?.toLowerCase() || '';
+    if (!allowedDomains.some(d => emailDomain.endsWith(d))) {
+      toast({
+        title: 'Invalid official email',
+        description: `Please use your official government email (e.g., name@${allowedDomains[0]})`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
-    const svc = import.meta.env.VITE_EMAILJS_SERVICE_ID as string | undefined;
-    const pub = import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string | undefined;
-    const tmpl = import.meta.env.VITE_EMAILJS_TEMPLATE_ID as string | undefined;
-    const canEmail = Boolean(svc && pub && tmpl);
     const toEmail = ADMIN_EMAILS[Math.floor(Math.random() * ADMIN_EMAILS.length)];
     const submitted_at = new Date().toISOString();
+    const sb = getSupabase();
 
     const saveLocal = () => {
       try {
@@ -65,48 +73,48 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
     };
 
     try {
-      if (canEmail) {
-        const templateParams = {
-          to_email: toEmail,
-          full_name: fullName,
-          official_email: officialEmail,
-          department,
-          designation,
-          employee_id: employeeId || 'N/A',
-          purpose,
-          role,
-          submitted_at,
-        } as Record<string, any>;
-
-        await emailjs.send(svc as string, tmpl as string, templateParams, pub as string);
-
-        const userTemplateId = (import.meta.env.VITE_EMAILJS_USER_TEMPLATE_ID as string) || (tmpl as string);
-        const baseUrl = (import.meta as any).env?.BASE_URL || '/';
-        const setPasswordLink = `${window.location.origin}${baseUrl}?set_password=1&email=${encodeURIComponent(officialEmail)}`;
-        const userTemplateParams = {
-          to_email: officialEmail,
-          username: officialEmail,
-          set_password_link: setPasswordLink,
-          full_name: fullName,
-          role,
-        } as Record<string, any>;
-
-        await emailjs.send(svc as string, userTemplateId, userTemplateParams, pub as string);
-
-        saveLocal();
-
-        toast({
-          title: 'Request Submitted',
-          description: `Your request has been sent to ${toEmail}. We've emailed your username and set-password link to ${officialEmail}.`,
-        });
-      } else {
-        // Fallback when EmailJS is not configured in the environment (e.g., GitHub Pages build)
-        saveLocal();
-        toast({
-          title: 'Request Submitted',
-          description: 'Your access request has been recorded. Our team will contact you shortly.',
-        });
+      // Always persist locally
+      saveLocal();
+      // Insert into Supabase if configured
+      if (sb) {
+        try {
+          await sb.from('access_requests').insert({
+            full_name: fullName,
+            official_email: officialEmail,
+            department,
+            designation,
+            employee_id: employeeId || null,
+            purpose,
+            role,
+            submitted_at,
+          });
+        } catch {}
+        // Attempt to send emails via edge function (optional)
+        try {
+          const baseUrl = (import.meta as any).env?.BASE_URL || '/';
+          const setPasswordLink = `${window.location.origin}${baseUrl}?set_password=1&email=${encodeURIComponent(officialEmail)}`;
+          await sb.functions.invoke('send-access-request', {
+            body: {
+              admin_to_email: toEmail,
+              user_to_email: officialEmail,
+              full_name: fullName,
+              official_email: officialEmail,
+              department,
+              designation,
+              employee_id: employeeId || 'N/A',
+              purpose,
+              role,
+              submitted_at,
+              set_password_link: setPasswordLink,
+            }
+          });
+        } catch {}
       }
+
+      toast({
+        title: 'Request Submitted',
+        description: `Your request has been recorded${sb ? ' and sent for processing' : ''}.`,
+      });
 
       setFullName('');
       setOfficialEmail('');
@@ -120,9 +128,23 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
     } catch (err) {
       // Email delivery failed – record locally to avoid data loss
       saveLocal();
+      if (sb) {
+        try {
+          await sb.from('access_requests').insert({
+            full_name: fullName,
+            official_email: officialEmail,
+            department,
+            designation,
+            employee_id: employeeId || null,
+            purpose,
+            role,
+            submitted_at,
+          });
+        } catch {}
+      }
       toast({
         title: 'Request Saved',
-        description: 'Email delivery failed, but your request has been recorded. We will review it shortly.',
+        description: 'Your request has been recorded. We will review it shortly.',
       });
     } finally {
       setIsSubmitting(false);

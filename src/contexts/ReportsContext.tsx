@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Report, Notification } from '@/lib/types';
 import { mockReports as initialReports, mockNotifications as initialNotifications } from '@/lib/data';
-import emailjs from '@emailjs/browser';
 import { loadEmailAlertSettings } from '@/lib/userSettings';
 import { getSupabase } from '@/lib/supabase';
 
@@ -251,15 +250,16 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [notifications]);
 
-  // Prune notifications older than 30 days, and hide resolved reports older than 30 days periodically
+  // Prune notifications older than 24 hours, and hide resolved reports older than 30 days periodically
   useEffect(() => {
     const prune = () => {
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      setNotifications(prev => prev.filter(n => new Date(n.timestamp).getTime() >= cutoff));
-      setReports(prev => prev.filter(r => !(r.status === 'Resolved' && new Date(r.submitted_at).getTime() < cutoff)));
+      const notifCutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const resolvedCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      setNotifications(prev => prev.filter(n => new Date(n.timestamp).getTime() >= notifCutoff));
+      setReports(prev => prev.filter(r => !(r.status === 'Resolved' && new Date(r.submitted_at).getTime() < resolvedCutoff)));
     };
     prune();
-    const id = setInterval(prune, 24 * 60 * 60 * 1000);
+    const id = setInterval(prune, 60 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -375,21 +375,20 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       (newReport.priority === 'High' && settings.high)
     );
     if (shouldAlert) {
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID as string;
-      const templateId = (import.meta.env.VITE_EMAILJS_ALERT_TEMPLATE_ID as string) || (import.meta.env.VITE_EMAILJS_TEMPLATE_ID as string);
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY as string;
-      const templateParams = {
-        to_email: settings.toEmail,
-        report_id: newReport.report_id,
-        priority: newReport.priority,
-        category: newReport.category,
-        location_text: newReport.location_text,
-        description: newReport.description,
-        submitted_at: newReport.submitted_at,
-      } as Record<string, any>;
-      try {
-        emailjs.send(serviceId, templateId, templateParams, publicKey);
-      } catch {}
+      const sb2 = getSupabase();
+      if (sb2) {
+        sb2.functions.invoke('send-alert', {
+          body: {
+            to_email: settings.toEmail,
+            report_id: newReport.report_id,
+            priority: newReport.priority,
+            category: newReport.category,
+            location_text: newReport.location_text,
+            description: newReport.description,
+            submitted_at: newReport.submitted_at,
+          }
+        }).catch(() => {});
+      }
     }
   };
 
