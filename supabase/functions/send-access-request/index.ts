@@ -1,31 +1,49 @@
 /// <reference path="../types.d.ts" />
-// supabase/functions/send-access-request/index.ts
-// Edge Function to email admin and user when an access request is submitted
-// Uses SendGrid HTTP API. Configure secrets in Supabase:
-//  - SENDGRID_API_KEY
-//  - FROM_EMAIL (e.g., noreply@yourdomain)
-//  - FROM_NAME  (e.g., NagrikGPT)
 
-const getCorsHeaders = (req: Request) => {
-  const origin = req.headers.get("origin") ?? "*";
-  const reqHeaders = req.headers.get("access-control-request-headers") ?? "authorization, x-client-info, apikey, content-type";
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Vary": "Origin",
-    "Access-Control-Allow-Headers": reqHeaders,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400",
-  } as Record<string, string>;
-};
+/**
+ * Supabase Edge Function: send-access-request
+ * Sends email to admins + confirmation to user using SendGrid
+ *
+ * REQUIRED SECRETS (Supabase Vault):
+ *  - SENDGRID_API_KEY
+ *  - FROM_EMAIL   (must be a VERIFIED SendGrid Single Sender)
+ *  - FROM_NAME
+ */
+
+const corsHeaders = (req: Request) => ({
+  "Access-Control-Allow-Origin": req.headers.get("origin") ?? "*",
+  "Access-Control-Allow-Headers":
+    req.headers.get("access-control-request-headers") ??
+    "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Max-Age": "86400",
+});
 
 Deno.serve(async (req: Request) => {
+  const headers = corsHeaders(req);
+
+  // ✅ CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers });
+  }
+
   try {
-    const corsHeaders = getCorsHeaders(req);
-    if (req.method === "OPTIONS") {
-      return new Response("ok", { headers: corsHeaders });
+    // ✅ Read secrets (NO fallback)
+    const SENDGRID_API_KEY = Deno.env.get("SENDGRID_API_KEY");
+    const FROM_EMAIL = Deno.env.get("FROM_EMAIL");
+    const FROM_NAME = Deno.env.get("FROM_NAME") ?? "NagrikGPT";
+
+    console.log("FROM_EMAIL USED BY FUNCTION:", FROM_EMAIL);
+
+    if (!SENDGRID_API_KEY) {
+      throw new Error("SENDGRID_API_KEY is not set in Supabase Vault");
     }
-    const body = await req.json();
+    if (!FROM_EMAIL) {
+      throw new Error("FROM_EMAIL is not set in Supabase Vault");
+    }
+
+    // ✅ Parse request body
     const {
       admin_to_email,
       admin_to_emails,
@@ -39,81 +57,101 @@ Deno.serve(async (req: Request) => {
       role,
       submitted_at,
       set_password_link,
-    } = body as Record<string, any>;
+    } = await req.json();
 
-    const API = Deno.env.get("SENDGRID_API_KEY");
-    const FROM = Deno.env.get("FROM_EMAIL") ?? "noreply@yourdomain";
-    const FROM_NAME = Deno.env.get("FROM_NAME") ?? "NagrikGPT";
-
-    if (!API) {
-      return new Response(JSON.stringify({ error: "Missing SENDGRID_API_KEY" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
-    const send = async (to: string, subject: string, html: string) =>
-      fetch("https://api.sendgrid.com/v3/mail/send", {
+    // ✅ SendGrid helper
+    const sendEmail = async (to: string, subject: string, html: string) => {
+      const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${API}`,
+          Authorization: `Bearer ${SENDGRID_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: to }] }],
-          from: { email: FROM, name: FROM_NAME },
+          from: { email: FROM_EMAIL, name: FROM_NAME },
           subject,
           content: [{ type: "text/html", value: html }],
         }),
       });
 
-    // Admin notifications (support single or multiple)
-    const adminList: string[] = Array.isArray(admin_to_emails) && admin_to_emails.length
-      ? admin_to_emails
-      : (admin_to_email ? [String(admin_to_email)] : []);
+      return {
+        status: res.status,
+        body: res.status !== 202 ? await res.text() : undefined,
+      };
+    };
 
-    const adminHtml = `<p><b>Name:</b> ${full_name}<br/>
-         <b>Email:</b> ${official_email}<br/>
-         <b>Dept:</b> ${department}<br/>
-         <b>Designation:</b> ${designation}<br/>
-         <b>Employee ID:</b> ${employee_id || "N/A"}<br/>
-         <b>Role:</b> ${role}<br/>
-         <b>Submitted:</b> ${submitted_at}<br/>
-         <b>Purpose:</b> ${purpose}</p>`;
+    // ✅ Admin email list
+    const adminList: string[] =
+      Array.isArray(admin_to_emails) && admin_to_emails.length
+        ? admin_to_emails
+        : admin_to_email
+        ? [admin_to_email]
+        : [];
 
-    const results: Array<{ to: string; type: string; status?: number; body?: string; error?: string }> = [];
+    const adminHtml = `
+      <p>
+        <b>Name:</b> ${full_name}<br/>
+        <b>Email:</b> ${official_email}<br/>
+        <b>Department:</b> ${department}<br/>
+        <b>Designation:</b> ${designation}<br/>
+        <b>Employee ID:</b> ${employee_id || "N/A"}<br/>
+        <b>Role:</b> ${role}<br/>
+        <b>Submitted:</b> ${submitted_at}<br/>
+        <b>Purpose:</b> ${purpose}
+      </p>
+    `;
 
-    for (const to of adminList) {
-      try {
-        const res = await send(to, `New access request: ${full_name}`, adminHtml);
-        const status = res.status;
-        const body = status !== 202 ? await res.text() : "";
-        results.push({ to, type: "admin", status, ...(body ? { body } : {}) });
-      } catch (err) {
-        results.push({ to, type: "admin", error: String(err) });
-      }
+    const results: any[] = [];
+
+    // ✅ Send to admins
+    for (const admin of adminList) {
+      const res = await sendEmail(
+        admin,
+        `New access request: ${full_name}`,
+        adminHtml
+      );
+      results.push({ to: admin, type: "admin", ...res });
     }
 
-    // User confirmation
-    try {
-      const res = await send(
+    // ✅ Send confirmation to user
+    if (user_to_email) {
+      const res = await sendEmail(
         user_to_email,
         "Your access request was received",
-        `<p>Hi ${full_name},<br/>
-           Your request was received. Set your password here:<br/>
-           <a href="${set_password_link}">${set_password_link}</a></p>`
+        `
+          <p>
+            Hi ${full_name},<br/><br/>
+            Your request was successfully submitted.<br/><br/>
+            Set your password here:<br/>
+            <a href="${set_password_link}">
+              ${set_password_link}
+            </a>
+          </p>
+        `
       );
-      const status = res.status;
-      const body = status !== 202 ? await res.text() : "";
-      results.push({ to: user_to_email, type: "user", status, ...(body ? { body } : {}) });
-    } catch (err) {
-      results.push({ to: user_to_email, type: "user", error: String(err) });
+      results.push({ to: user_to_email, type: "user", ...res });
     }
 
-    try { console.log("send-access-request results", results); } catch {}
+    console.log("send-access-request results:", results);
 
-    return new Response(JSON.stringify({ ok: true, results }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-  } catch (e) {
-    // Never fail the client. Log only in function logs.
-    const corsHeaders = getCorsHeaders(req);
-    return new Response(JSON.stringify({ error: String(e) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ ok: true, results }),
+      {
+        status: 200,
+        headers: { ...headers, "Content-Type": "application/json" },
+      }
+    );
+  } catch (err) {
+    console.error("send-access-request ERROR:", err);
+
+    return new Response(
+      JSON.stringify({ ok: false, error: String(err) }),
+      {
+        status: 500,
+        headers: { ...headers, "Content-Type": "application/json" },
+      }
+    );
   }
 });
 
