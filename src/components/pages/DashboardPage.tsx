@@ -21,6 +21,7 @@ interface DashboardPageProps {
   onFilterChange: (filter: string) => void;
   onOpenReport: (reportId: string) => void;
   onViewAllAssigned: () => void;
+  onNavigateToReportsFiltered: (filter: 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent') => void;
 }
 
 const statCards = [
@@ -33,7 +34,7 @@ const statCards = [
 
 const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
 
-export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned }: DashboardPageProps) {
+export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned, onNavigateToReportsFiltered }: DashboardPageProps) {
   const { user, isAdmin } = useAuth();
   const { reports, notifications, requestAssignment } = useReports();
 
@@ -92,9 +93,19 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
             <Card 
               key={stat.id}
               className={cn(
-                "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
+                "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary",
                 stat.highlight && "border-destructive/50 bg-destructive-light"
               )}
+              onClick={() => {
+                const map: Record<string, 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent'> = {
+                  total: 'all',
+                  pending: 'Pending',
+                  inProgress: 'In Progress',
+                  resolved: 'Resolved',
+                  urgent: 'Urgent',
+                };
+                onNavigateToReportsFiltered(map[stat.id as keyof typeof map]);
+              }}
             >
               <CardContent className="p-4">
                 <div className="flex items-start justify-between">
@@ -125,51 +136,53 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
 
       {/* Dashboard Grid */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Assigned to Me */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Assigned to Me</CardTitle>
-              <Button variant="ghost" size="sm" className="text-primary" onClick={onViewAllAssigned}>
-                View All
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {assignedReports.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                No reports assigned to you
-              </p>
-            ) : (
-              assignedReports.map((report) => (
-                <button
-                  key={report.report_id}
-                  onClick={() => onOpenReport(report.report_id)}
-                  className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <span className="font-mono text-sm font-medium text-primary">
-                      {report.report_id}
-                    </span>
-                    <Badge className={getPriorityColor(report.priority)}>
-                      {report.priority}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge variant="secondary">{report.category}</Badge>
-                    <span className="flex items-center gap-1 text-muted-foreground">
-                      <MapPin className="w-3 h-3" />
-                      {report.location_text}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    {timeAgo(report.submitted_at)}
-                  </p>
-                </button>
-              ))
-            )}
-          </CardContent>
-        </Card>
+        {/* Assigned to Me - hidden for Admins */}
+        {!isAdmin && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg">Assigned to Me</CardTitle>
+                <Button variant="ghost" size="sm" className="text-primary" onClick={onViewAllAssigned}>
+                  View All
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {assignedReports.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  No reports assigned to you
+                </p>
+              ) : (
+                assignedReports.map((report) => (
+                  <button
+                    key={report.report_id}
+                    onClick={() => onOpenReport(report.report_id)}
+                    className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <span className="font-mono text-sm font-medium text-primary">
+                        {report.report_id}
+                      </span>
+                      <Badge className={getPriorityColor(report.priority)}>
+                        {report.priority}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge variant="secondary">{report.category}</Badge>
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <MapPin className="w-3 h-3" />
+                        {report.location_text}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {timeAgo(report.submitted_at)}
+                    </p>
+                  </button>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recent Alerts */}
         <Card>

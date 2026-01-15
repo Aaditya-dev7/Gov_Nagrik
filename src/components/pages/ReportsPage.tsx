@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useReports } from '@/contexts/ReportsContext';
 import { Report } from '@/lib/types';
 import { categories, formatDate, timeAgo } from '@/lib/data';
@@ -25,9 +25,10 @@ interface ReportsPageProps {
   searchQuery: string;
   onOpenReport: (reportId: string) => void;
   assignedOnlyUserId?: string | null;
+  presetFilters?: { status?: string[]; priority?: string[] } | null;
 }
 
-export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId }: ReportsPageProps) {
+export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters }: ReportsPageProps) {
   const { reports } = useReports();
   const [viewMode, setViewMode] = useState<'table' | 'card'>('card');
   const [sortBy, setSortBy] = useState('newest');
@@ -35,6 +36,14 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId }: R
   const [priorityFilters, setPriorityFilters] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedReports, setSelectedReports] = useState<string[]>([]);
+
+  // Apply preset filters from navigation
+  useEffect(() => {
+    if (!presetFilters) return;
+    setStatusFilters(presetFilters.status ?? []);
+    setPriorityFilters(presetFilters.priority ?? []);
+    setCategoryFilter('');
+  }, [JSON.stringify(presetFilters)]);
 
   const filteredReports = useMemo(() => {
     let result = assignedOnlyUserId ? reports.filter(r => r.assigned_officer_id === assignedOnlyUserId) : [...reports];

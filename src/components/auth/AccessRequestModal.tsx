@@ -47,19 +47,18 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       return;
     }
 
-    const allowedDomains = ['nagarpalika.gov.in', 'gov.in'];
-    const emailDomain = officialEmail.split('@')[1]?.toLowerCase() || '';
-    if (!allowedDomains.some(d => emailDomain.endsWith(d))) {
+    // Relaxed validation: allow any email format with '@' so requests are always captured during testing
+    if (!officialEmail.includes('@')) {
       toast({
-        title: 'Invalid official email',
-        description: `Please use your official government email (e.g., name@${allowedDomains[0]})`,
+        title: 'Invalid email',
+        description: 'Please enter a valid email address.',
         variant: 'destructive',
       });
       return;
     }
 
     setIsSubmitting(true);
-    const toEmail = ADMIN_EMAILS[Math.floor(Math.random() * ADMIN_EMAILS.length)];
+    const toEmails = ADMIN_EMAILS.slice();
     const submitted_at = new Date().toISOString();
     const sb = getSupabase();
 
@@ -89,13 +88,13 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
             submitted_at,
           });
         } catch {}
-        // Attempt to send emails via edge function (optional)
+        // Attempt to notify all admins and the user via edge function (optional)
         try {
           const baseUrl = (import.meta as any).env?.BASE_URL || '/';
           const setPasswordLink = `${window.location.origin}${baseUrl}?set_password=1&email=${encodeURIComponent(officialEmail)}`;
           await sb.functions.invoke('send-access-request', {
             body: {
-              admin_to_email: toEmail,
+              admin_to_emails: toEmails,
               user_to_email: officialEmail,
               full_name: fullName,
               official_email: officialEmail,

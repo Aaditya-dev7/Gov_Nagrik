@@ -26,6 +26,7 @@ export function MainApp() {
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [assignedOnlyUserId, setAssignedOnlyUserId] = useState<string | null>(null);
+  const [reportsPresetFilters, setReportsPresetFilters] = useState<{ status?: string[]; priority?: string[] } | null>(null);
 
   const handleNavigate = (page: string) => {
     // Prevent non-admins from accessing admin pages
@@ -34,6 +35,10 @@ export function MainApp() {
     }
     if (page === 'reports') {
       setAssignedOnlyUserId(isAdmin ? null : (user?.id ?? null));
+    }
+    if (page !== 'reports') {
+      // Clear any preset filters when leaving Reports
+      setReportsPresetFilters(null);
     }
     setCurrentPage(page);
   };
@@ -80,6 +85,19 @@ export function MainApp() {
     setCurrentPage('reports');
   };
 
+  const handleNavigateToReportsFiltered = (filter: 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent') => {
+    setAssignedOnlyUserId(null);
+    setSearchQuery('');
+    if (filter === 'all') {
+      setReportsPresetFilters({ status: [], priority: [] });
+    } else if (filter === 'Urgent') {
+      setReportsPresetFilters({ priority: ['Urgent'], status: [] });
+    } else {
+      setReportsPresetFilters({ status: [filter], priority: [] });
+    }
+    setCurrentPage('reports');
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'dashboard':
@@ -89,6 +107,7 @@ export function MainApp() {
             onFilterChange={setDashboardFilter}
             onOpenReport={handleOpenReport}
             onViewAllAssigned={handleViewAllAssigned}
+            onNavigateToReportsFiltered={handleNavigateToReportsFiltered}
           />
         );
       case 'reports':
@@ -97,6 +116,7 @@ export function MainApp() {
             searchQuery={searchQuery}
             onOpenReport={handleOpenReport}
             assignedOnlyUserId={assignedOnlyUserId}
+            presetFilters={reportsPresetFilters}
           />
         );
       case 'map':
@@ -120,6 +140,7 @@ export function MainApp() {
             onFilterChange={setDashboardFilter}
             onOpenReport={handleOpenReport}
             onViewAllAssigned={handleViewAllAssigned}
+            onNavigateToReportsFiltered={handleNavigateToReportsFiltered}
           />
         );
     }

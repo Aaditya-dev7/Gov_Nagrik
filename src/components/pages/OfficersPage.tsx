@@ -7,7 +7,11 @@ import { mockUsers } from '@/lib/data';
 import { useReports } from '@/contexts/ReportsContext';
 import { User } from '@/lib/types';
 
-export function OfficersPage() {
+interface OfficersPageProps {
+  onNavigateToReportsFiltered?: (filter: 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent') => void;
+}
+
+export function OfficersPage({ onNavigateToReportsFiltered }: OfficersPageProps) {
   const { reports } = useReports();
   const [query, setQuery] = React.useState('');
 
@@ -43,27 +47,66 @@ export function OfficersPage() {
     }
   };
 
+  const totals = {
+    total: reports.length,
+    pending: reports.filter(r => r.status === 'Pending').length,
+    inProgress: reports.filter(r => r.status === 'In Progress').length,
+    resolved: reports.filter(r => r.status === 'Resolved').length,
+    urgent: reports.filter(r => r.priority === 'Urgent').length,
+  };
+
+  const handleTileClick = (key: keyof typeof totals) => {
+    if (!onNavigateToReportsFiltered) return;
+    const map: Record<keyof typeof totals, 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent'> = {
+      total: 'all',
+      pending: 'Pending',
+      inProgress: 'In Progress',
+      resolved: 'Resolved',
+      urgent: 'Urgent',
+    };
+    onNavigateToReportsFiltered(map[key]);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <Card>
         <CardContent className="py-4">
-          <div className="flex flex-wrap gap-6">
-            <div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <button
+              className="text-left p-3 rounded-lg border hover:bg-accent transition-all hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={() => handleTileClick('total')}
+            >
               <div className="text-xs text-muted-foreground">Total Reports</div>
-              <div className="text-2xl font-bold">{reports.length}</div>
-            </div>
-            <div>
+              <div className="text-2xl font-bold">{totals.total}</div>
+            </button>
+            <button
+              className="text-left p-3 rounded-lg border hover:bg-accent transition-all hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={() => handleTileClick('pending')}
+            >
               <div className="text-xs text-muted-foreground">Pending</div>
-              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'Pending').length}</div>
-            </div>
-            <div>
+              <div className="text-2xl font-bold">{totals.pending}</div>
+            </button>
+            <button
+              className="text-left p-3 rounded-lg border hover:bg-accent transition-all hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={() => handleTileClick('inProgress')}
+            >
               <div className="text-xs text-muted-foreground">In Progress</div>
-              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'In Progress').length}</div>
-            </div>
-            <div>
+              <div className="text-2xl font-bold">{totals.inProgress}</div>
+            </button>
+            <button
+              className="text-left p-3 rounded-lg border hover:bg-accent transition-all hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={() => handleTileClick('resolved')}
+            >
               <div className="text-xs text-muted-foreground">Resolved</div>
-              <div className="text-2xl font-bold">{reports.filter(r => r.status === 'Resolved').length}</div>
-            </div>
+              <div className="text-2xl font-bold">{totals.resolved}</div>
+            </button>
+            <button
+              className="text-left p-3 rounded-lg border hover:bg-accent transition-all hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              onClick={() => handleTileClick('urgent')}
+            >
+              <div className="text-xs text-muted-foreground">Urgent</div>
+              <div className="text-2xl font-bold">{totals.urgent}</div>
+            </button>
           </div>
         </CardContent>
       </Card>

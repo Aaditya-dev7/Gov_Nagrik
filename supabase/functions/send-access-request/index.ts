@@ -8,8 +8,10 @@
 
 Deno.serve(async (req: Request) => {
   try {
+    const body = await req.json();
     const {
       admin_to_email,
+      admin_to_emails,
       user_to_email,
       full_name,
       official_email,
@@ -20,7 +22,7 @@ Deno.serve(async (req: Request) => {
       role,
       submitted_at,
       set_password_link,
-    } = await req.json();
+    } = body as Record<string, any>;
 
     const API = Deno.env.get("SENDGRID_API_KEY");
     const FROM = Deno.env.get("FROM_EMAIL") ?? "noreply@yourdomain";
@@ -45,19 +47,23 @@ Deno.serve(async (req: Request) => {
         }),
       });
 
-    // Admin notification
-    await send(
-      admin_to_email,
-      `New access request: ${full_name}`,
-      `<p><b>Name:</b> ${full_name}<br/>
+    // Admin notifications (support single or multiple)
+    const adminList: string[] = Array.isArray(admin_to_emails) && admin_to_emails.length
+      ? admin_to_emails
+      : (admin_to_email ? [String(admin_to_email)] : []);
+
+    const adminHtml = `<p><b>Name:</b> ${full_name}<br/>
          <b>Email:</b> ${official_email}<br/>
          <b>Dept:</b> ${department}<br/>
          <b>Designation:</b> ${designation}<br/>
          <b>Employee ID:</b> ${employee_id || "N/A"}<br/>
          <b>Role:</b> ${role}<br/>
          <b>Submitted:</b> ${submitted_at}<br/>
-         <b>Purpose:</b> ${purpose}</p>`
-    );
+         <b>Purpose:</b> ${purpose}</p>`;
+
+    for (const to of adminList) {
+      try { await send(to, `New access request: ${full_name}`, adminHtml); } catch {}
+    }
 
     // User confirmation
     await send(
