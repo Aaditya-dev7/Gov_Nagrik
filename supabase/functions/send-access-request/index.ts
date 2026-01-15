@@ -6,8 +6,17 @@
 //  - FROM_EMAIL (e.g., noreply@yourdomain)
 //  - FROM_NAME  (e.g., NagrikGPT)
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req: Request) => {
   try {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
     const body = await req.json();
     const {
       admin_to_email,
@@ -29,7 +38,7 @@ Deno.serve(async (req: Request) => {
     const FROM_NAME = Deno.env.get("FROM_NAME") ?? "NagrikGPT";
 
     if (!API) {
-      return new Response("Missing SENDGRID_API_KEY", { status: 200 });
+      return new Response("Missing SENDGRID_API_KEY", { status: 200, headers: corsHeaders });
     }
 
     const send = async (to: string, subject: string, html: string) =>
@@ -74,10 +83,10 @@ Deno.serve(async (req: Request) => {
          <a href="${set_password_link}">${set_password_link}</a></p>`
     );
 
-    return new Response("OK", { status: 200 });
+    return new Response("OK", { status: 200, headers: corsHeaders });
   } catch (e) {
     // Never fail the client. Log only in function logs.
-    return new Response(`ERR ${e}`, { status: 200 });
+    return new Response(`ERR ${e}`, { status: 200, headers: corsHeaders });
   }
 });
 
