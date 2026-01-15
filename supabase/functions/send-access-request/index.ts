@@ -78,20 +78,38 @@ Deno.serve(async (req: Request) => {
          <b>Submitted:</b> ${submitted_at}<br/>
          <b>Purpose:</b> ${purpose}</p>`;
 
+    const results: Array<{ to: string; type: string; status?: number; body?: string; error?: string }> = [];
+
     for (const to of adminList) {
-      try { await send(to, `New access request: ${full_name}`, adminHtml); } catch {}
+      try {
+        const res = await send(to, `New access request: ${full_name}`, adminHtml);
+        const status = res.status;
+        const body = status !== 202 ? await res.text() : "";
+        results.push({ to, type: "admin", status, ...(body ? { body } : {}) });
+      } catch (err) {
+        results.push({ to, type: "admin", error: String(err) });
+      }
     }
 
     // User confirmation
-    await send(
-      user_to_email,
-      "Your access request was received",
-      `<p>Hi ${full_name},<br/>
-         Your request was received. Set your password here:<br/>
-         <a href="${set_password_link}">${set_password_link}</a></p>`
-    );
+    try {
+      const res = await send(
+        user_to_email,
+        "Your access request was received",
+        `<p>Hi ${full_name},<br/>
+           Your request was received. Set your password here:<br/>
+           <a href="${set_password_link}">${set_password_link}</a></p>`
+      );
+      const status = res.status;
+      const body = status !== 202 ? await res.text() : "";
+      results.push({ to: user_to_email, type: "user", status, ...(body ? { body } : {}) });
+    } catch (err) {
+      results.push({ to: user_to_email, type: "user", error: String(err) });
+    }
 
-    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    try { console.log("send-access-request results", results); } catch {}
+
+    return new Response(JSON.stringify({ ok: true, results }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     // Never fail the client. Log only in function logs.
     const corsHeaders = getCorsHeaders(req);
