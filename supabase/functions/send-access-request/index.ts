@@ -6,14 +6,22 @@
 //  - FROM_EMAIL (e.g., noreply@yourdomain)
 //  - FROM_NAME  (e.g., NagrikGPT)
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+const getCorsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") ?? "*";
+  const reqHeaders = req.headers.get("access-control-request-headers") ?? "authorization, x-client-info, apikey, content-type";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": reqHeaders,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400",
+  } as Record<string, string>;
 };
 
 Deno.serve(async (req: Request) => {
   try {
+    const corsHeaders = getCorsHeaders(req);
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
@@ -38,7 +46,7 @@ Deno.serve(async (req: Request) => {
     const FROM_NAME = Deno.env.get("FROM_NAME") ?? "NagrikGPT";
 
     if (!API) {
-      return new Response("Missing SENDGRID_API_KEY", { status: 200, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: "Missing SENDGRID_API_KEY" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const send = async (to: string, subject: string, html: string) =>
@@ -83,10 +91,11 @@ Deno.serve(async (req: Request) => {
          <a href="${set_password_link}">${set_password_link}</a></p>`
     );
 
-    return new Response("OK", { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     // Never fail the client. Log only in function logs.
-    return new Response(`ERR ${e}`, { status: 200, headers: corsHeaders });
+    const corsHeaders = getCorsHeaders(req);
+    return new Response(JSON.stringify({ error: String(e) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 

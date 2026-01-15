@@ -6,8 +6,26 @@
 //  - FROM_EMAIL (e.g., noreply@yourdomain)
 //  - FROM_NAME  (e.g., NagrikGPT)
 
+const getCorsHeaders = (req: Request) => {
+  const origin = req.headers.get("origin") ?? "*";
+  const reqHeaders = req.headers.get("access-control-request-headers") ?? "authorization, x-client-info, apikey, content-type";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Headers": reqHeaders,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400",
+  } as Record<string, string>;
+};
+
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req);
   try {
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
+
     const {
       to_email,
       report_id,
@@ -21,7 +39,7 @@ Deno.serve(async (req: Request) => {
     const API = Deno.env.get("SENDGRID_API_KEY");
     const FROM = Deno.env.get("FROM_EMAIL") ?? "noreply@yourdomain";
     const FROM_NAME = Deno.env.get("FROM_NAME") ?? "NagrikGPT";
-    if (!API) return new Response("Missing SENDGRID_API_KEY", { status: 200 });
+    if (!API) return new Response(JSON.stringify({ error: "Missing SENDGRID_API_KEY" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
       method: "POST",
@@ -47,9 +65,9 @@ Deno.serve(async (req: Request) => {
       }),
     });
 
-    return new Response(String(res.status), { status: 200 });
+    return new Response(JSON.stringify({ status: res.status }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    return new Response(`ERR ${e}`, { status: 200 });
+    return new Response(JSON.stringify({ error: String(e) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 
