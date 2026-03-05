@@ -91,6 +91,11 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
 
   if (!report) return null;
 
+  const officerCanAct = Boolean(
+    isAdmin ||
+    (user?.id && report.assigned_officer_id && report.assigned_officer_id === user.id)
+  );
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Pending': return 'bg-warning-light text-warning border-warning/30';
@@ -376,7 +381,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
               <Button 
                 className="w-full justify-start" 
                 onClick={handleMarkInProgress}
-                disabled={report.status === 'In Progress'}
+                disabled={!officerCanAct || report.status === 'In Progress'}
               >
                 <PlayCircle className="w-4 h-4 mr-2" />
                 Mark In Progress
@@ -384,7 +389,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
               <Button 
                 className="w-full justify-start bg-success hover:bg-success/90" 
                 onClick={handleMarkResolved}
-                disabled={report.status === 'Resolved'}
+                disabled={!officerCanAct || report.status === 'Resolved'}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Mark Resolved
@@ -393,7 +398,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 variant="outline" 
                 className="w-full justify-start border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                 onClick={() => setShowRejectionDialog(true)}
-                disabled={report.status === 'Rejected'}
+                disabled={!officerCanAct || report.status === 'Rejected'}
               >
                 <XCircle className="w-4 h-4 mr-2" />
                 Mark Rejected
@@ -402,11 +407,12 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 variant="secondary" 
                 className="w-full justify-start"
                 onClick={() => setShowProgressDialog(true)}
+                disabled={!officerCanAct}
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Add Progress Note
               </Button>
-              {report.status === 'Resolved' && (
+              {isAdmin && report.status === 'Resolved' && (
                 <Button
                   variant="destructive"
                   className="w-full justify-start"

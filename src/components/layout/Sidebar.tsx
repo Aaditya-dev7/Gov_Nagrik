@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReports } from '@/contexts/ReportsContext';
 import { cn } from '@/lib/utils';
+import { t, useLang } from '@/lib/i18n';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -35,6 +36,7 @@ const navItems = [
 
 export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const { user, logout, isAdmin } = useAuth();
+  const _lang = useLang();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -117,6 +119,19 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentPage === item.id;
+            const label = (() => {
+              switch (item.id) {
+                case 'dashboard': return t('page.dashboard', 'Dashboard');
+                case 'reports': return t('page.reports', 'Reports');
+                case 'map': return t('page.map', 'Map');
+                case 'heatmap': return t('page.heatmap', 'Heatmap');
+                case 'users': return t('page.users', 'Users');
+                case 'departments': return t('page.departments', 'Departments');
+                case 'officers': return t('page.officers', 'Officers');
+                case 'settings': return t('page.settings', 'Settings');
+                default: return item.label;
+              }
+            })();
             
             return (
               <button
@@ -133,7 +148,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                 <Icon className="w-5 h-5 shrink-0" />
                 {!isCollapsed && (
                   <>
-                    <span className="font-medium">{item.label}</span>
+                    <span className="font-medium">{label}</span>
                     {item.badge && (
                       <span className="ml-auto text-xs px-1.5 py-0.5 bg-sidebar-accent text-sidebar-accent-foreground rounded">
                         {item.badge}
@@ -157,7 +172,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             )}
           >
             <LogOut className="w-4 h-4" />
-            {!isCollapsed && <span className="ml-2">Logout</span>}
+            {!isCollapsed && <span className="ml-2">{t('auth.logout', 'Logout')}</span>}
           </Button>
         </div>
       </aside>

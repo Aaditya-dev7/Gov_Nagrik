@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { t, useLang } from '@/lib/i18n';
 import { 
   LayoutGrid, 
   List, 
@@ -30,6 +31,7 @@ interface ReportsPageProps {
 
 export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters }: ReportsPageProps) {
   const { reports } = useReports();
+  const _lang = useLang();
   const [viewMode, setViewMode] = useState<'table' | 'card'>('card');
   const [sortBy, setSortBy] = useState('newest');
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
@@ -136,19 +138,19 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
             <div className="flex items-center justify-between">
               <h3 className="font-semibold flex items-center gap-2">
                 <Filter className="w-4 h-4" />
-                Filters
+                {t('reports.filters', 'Filters')}
               </h3>
               {hasActiveFilters && (
                 <Button variant="ghost" size="sm" onClick={clearFilters}>
                   <X className="w-3 h-3 mr-1" />
-                  Clear
+                  {t('reports.clear', 'Clear')}
                 </Button>
               )}
             </div>
 
             {/* Status */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Status</Label>
+              <Label className="text-sm font-medium">{t('reports.status', 'Status')}</Label>
               {['Pending', 'In Progress', 'Resolved', 'Rejected'].map(status => (
                 <div key={status} className="flex items-center gap-2">
                   <Checkbox
@@ -165,7 +167,7 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
 
             {/* Priority */}
             <div className="space-y-3">
-              <Label className="text-sm font-medium">Priority</Label>
+              <Label className="text-sm font-medium">{t('reports.priority', 'Priority')}</Label>
               {['Low', 'Medium', 'High', 'Urgent'].map(priority => (
                 <div key={priority} className="flex items-center gap-2">
                   <Checkbox
@@ -182,13 +184,13 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
 
             {/* Category */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Category</Label>
+              <Label className="text-sm font-medium">{t('reports.category', 'Category')}</Label>
               <Select value={categoryFilter || "all"} onValueChange={(val) => setCategoryFilter(val === "all" ? "" : val)}>
                 <SelectTrigger>
-                  <SelectValue placeholder="All Categories" />
+                  <SelectValue placeholder={t('reports.all_categories', 'All Categories')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="all">{t('reports.all_categories', 'All Categories')}</SelectItem>
                   {categories.map(cat => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
@@ -210,7 +212,7 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
               onClick={() => setViewMode('table')}
             >
               <List className="w-4 h-4 mr-1" />
-              Table
+              {t('reports.table', 'Table')}
             </Button>
             <Button
               variant={viewMode === 'card' ? 'default' : 'outline'}
@@ -218,7 +220,7 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
               onClick={() => setViewMode('card')}
             >
               <LayoutGrid className="w-4 h-4 mr-1" />
-              Cards
+              {t('reports.cards', 'Cards')}
             </Button>
           </div>
 
@@ -227,16 +229,16 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="newest">Newest First</SelectItem>
-              <SelectItem value="oldest">Oldest First</SelectItem>
-              <SelectItem value="priority">High Priority First</SelectItem>
+              <SelectItem value="newest">{t('reports.sort.newest', 'Newest First')}</SelectItem>
+              <SelectItem value="oldest">{t('reports.sort.oldest', 'Oldest First')}</SelectItem>
+              <SelectItem value="priority">{t('reports.sort.priority', 'High Priority First')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
         {/* Results Count */}
         <p className="text-sm text-muted-foreground">
-          Showing {filteredReports.length} of {reports.length} reports
+          {t('reports.showing', 'Showing')} {filteredReports.length} {t('reports.of', 'of')} {reports.length} reports
         </p>
 
         {/* Empty State */}
@@ -244,9 +246,9 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
           <Card>
             <CardContent className="py-12 text-center">
               <div className="text-4xl mb-4">📭</div>
-              <h3 className="font-semibold mb-2">No reports found</h3>
+              <h3 className="font-semibold mb-2">{t('reports.no_reports_found', 'No reports found')}</h3>
               <p className="text-muted-foreground text-sm">
-                Try adjusting your filters or search criteria
+                {t('reports.try_adjust', 'Try adjusting your filters or search criteria')}
               </p>
             </CardContent>
           </Card>

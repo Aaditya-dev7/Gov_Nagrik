@@ -204,7 +204,7 @@ export function MapPage({ onOpenReport }: MapPageProps) {
 
 
       <Card className="overflow-hidden">
-        <div className="h-[600px] relative">
+        <div className="h-[360px] sm:h-[460px] lg:h-[calc(100vh-260px)] min-h-[360px] relative">
           <MapContainer
             center={defaultCenter}
             zoom={13}

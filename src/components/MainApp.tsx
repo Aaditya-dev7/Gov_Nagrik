@@ -16,10 +16,12 @@ import { ProfilePage } from './pages/ProfilePage';
 import { cn } from '@/lib/utils';
 import { MobileBottomNav } from './layout/MobileBottomNav';
 import { OfficersPage } from './pages/OfficersPage';
+import { t, useLang } from '@/lib/i18n';
 
 export function MainApp() {
   const { isAdmin, user } = useAuth();
   const { reports } = useReports();
+  const _lang = useLang();
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [dashboardFilter, setDashboardFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +36,8 @@ export function MainApp() {
       return;
     }
     if (page === 'reports') {
-      setAssignedOnlyUserId(isAdmin ? null : (user?.id ?? null));
+      // Show All Reports by default; officers can switch to assigned-only via dashboard action
+      setAssignedOnlyUserId(null);
     }
     if (page !== 'reports') {
       // Clear any preset filters when leaving Reports
@@ -50,6 +53,17 @@ export function MainApp() {
       const saved = localStorage.getItem(key);
       if (saved) setCurrentPage(saved);
     } catch {}
+
+    // If officer has no saved page yet, land on Reports by default so they immediately see assignments.
+    if (user && !isAdmin) {
+      try {
+        const key = 'officer:lastPage';
+        const saved = localStorage.getItem(key);
+        if (!saved) {
+          setCurrentPage('reports');
+        }
+      } catch {}
+    }
 
     const adminOnly = ['users', 'departments', 'officers'];
     if (!isAdmin && adminOnly.includes(currentPage)) {
@@ -161,11 +175,11 @@ export function MainApp() {
         <div className="px-4 sm:px-6 lg:px-8 mt-2">
           {isAdmin ? (
             <div className="rounded-md border border-primary/30 bg-primary/10 text-primary px-3 py-2 text-sm">
-              Admin Portal
+              {t('dashboard.admin_portal', 'Admin Portal')}
             </div>
           ) : (
             <div className="rounded-md border border-success/30 bg-success/10 text-success px-3 py-2 text-sm">
-              Officer Portal
+              {t('dashboard.officer_portal', 'Officer Portal')}
             </div>
           )}
         </div>

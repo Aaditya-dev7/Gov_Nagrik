@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/data';
+import { t, useLang } from '@/lib/i18n';
 import { 
   FileText, 
   Clock, 
@@ -25,11 +26,11 @@ interface DashboardPageProps {
 }
 
 const statCards = [
-  { id: 'total', label: 'Total Reports', icon: FileText, color: 'text-primary' },
-  { id: 'pending', label: 'Pending', icon: Clock, color: 'text-warning' },
-  { id: 'inProgress', label: 'In Progress', icon: RefreshCw, color: 'text-info' },
-  { id: 'resolved', label: 'Resolved', icon: CheckCircle2, color: 'text-success' },
-  { id: 'urgent', label: 'Urgent', icon: AlertTriangle, color: 'text-destructive', highlight: true },
+  { id: 'total', label: 'dashboard.total_reports', icon: FileText, color: 'text-primary' },
+  { id: 'pending', label: 'dashboard.pending', icon: Clock, color: 'text-warning' },
+  { id: 'inProgress', label: 'dashboard.in_progress', icon: RefreshCw, color: 'text-info' },
+  { id: 'resolved', label: 'dashboard.resolved', icon: CheckCircle2, color: 'text-success' },
+  { id: 'urgent', label: 'dashboard.urgent', icon: AlertTriangle, color: 'text-destructive', highlight: true },
 ];
 
 const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
@@ -37,9 +38,10 @@ const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
 export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned, onNavigateToReportsFiltered }: DashboardPageProps) {
   const { user, isAdmin } = useAuth();
   const { reports, notifications, requestAssignment } = useReports();
+  const _lang = useLang();
 
   // Calculate stats
-  const base = isAdmin ? reports : reports.filter(r => r.assigned_officer_id === user?.id);
+  const base = reports;
   const stats = {
     total: base.length,
     pending: base.filter(r => r.status === 'Pending').length,
@@ -48,9 +50,7 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
     urgent: base.filter(r => r.priority === 'Urgent').length,
   };
 
-  // Get assigned reports for current user and apply dashboard filter
-  const assignedReportsAll = reports.filter(r => r.assigned_officer_id === user?.id);
-  const assignedReports = assignedReportsAll
+  const recentReports = reports
     .filter(r => {
       if (filter === 'all') return true;
       if (filter === 'Urgent') return r.priority === 'Urgent';
@@ -84,7 +84,7 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Hero Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           const value = stats[stat.id as keyof typeof stats];
@@ -93,7 +93,7 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
             <Card 
               key={stat.id}
               className={cn(
-                "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary",
+                "transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary w-full",
                 stat.highlight && "border-destructive/50 bg-destructive-light"
               )}
               onClick={() => {
@@ -107,12 +107,12 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
                 onNavigateToReportsFiltered(map[stat.id as keyof typeof map]);
               }}
             >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
+              <CardContent className="p-3 sm:p-4">
+                <div className="flex items-start justify-between gap-2">
                   <Icon className={cn("w-5 h-5", stat.color)} />
                 </div>
-                <p className="text-3xl font-bold mt-2">{value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="text-2xl sm:text-3xl font-bold mt-2 break-words">{value}</p>
+                <p className="text-sm text-muted-foreground break-words">{t(stat.label, stat.label)}</p>
               </CardContent>
             </Card>
           );
@@ -129,70 +129,83 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
             onClick={() => onFilterChange(chip)}
             className="transition-all duration-200"
           >
-            {chip === 'all' ? 'All' : chip}
+            {chip === 'all'
+              ? t('dashboard.filter.all', 'All')
+              : chip === 'Pending'
+                ? t('dashboard.filter.pending', 'Pending')
+                : chip === 'In Progress'
+                  ? t('dashboard.filter.in_progress', 'In Progress')
+                  : chip === 'Resolved'
+                    ? t('dashboard.filter.resolved', 'Resolved')
+                    : chip === 'Urgent'
+                      ? t('dashboard.filter.urgent', 'Urgent')
+                      : chip}
           </Button>
         ))}
       </div>
 
       {/* Dashboard Grid */}
       <div className="grid md:grid-cols-2 gap-6">
-        {/* Assigned to Me - hidden for Admins */}
-        {!isAdmin && (
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg">Assigned to Me</CardTitle>
-                <Button variant="ghost" size="sm" className="text-primary" onClick={onViewAllAssigned}>
-                  View All
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {assignedReports.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  No reports assigned to you
-                </p>
-              ) : (
-                assignedReports.map((report) => (
-                  <button
-                    key={report.report_id}
-                    onClick={() => onOpenReport(report.report_id)}
-                    className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <span className="font-mono text-sm font-medium text-primary">
-                        {report.report_id}
-                      </span>
-                      <Badge className={getPriorityColor(report.priority)}>
-                        {report.priority}
-                      </Badge>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <Badge variant="secondary">{report.category}</Badge>
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        <MapPin className="w-3 h-3" />
-                        {report.location_text}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {timeAgo(report.submitted_at)}
-                    </p>
-                  </button>
-                ))
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {/* Reports snapshot (Admin: Recent reports, Officer: Assigned to me) */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg">{isAdmin ? t('dashboard.recent_reports', 'Recent Reports') : t('dashboard.assigned_to_me', 'Assigned to Me')}</CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary"
+                onClick={isAdmin ? () => onNavigateToReportsFiltered('all') : onViewAllAssigned}
+              >
+                {t('dashboard.view_all', 'View All')}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {recentReports.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                {isAdmin ? t('dashboard.no_reports_yet', 'No reports yet') : t('dashboard.no_assigned_reports', 'No reports assigned to you')}
+              </p>
+            ) : (
+              recentReports.map((report) => (
+                <button
+                  key={report.report_id}
+                  onClick={() => onOpenReport(report.report_id)}
+                  className="w-full text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <span className="font-mono text-sm font-medium text-primary">
+                      {report.report_id}
+                    </span>
+                    <Badge className={getPriorityColor(report.priority)}>
+                      {report.priority}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge variant="secondary">{report.category}</Badge>
+                    <span className="flex items-center gap-1 text-muted-foreground">
+                      <MapPin className="w-3 h-3" />
+                      {report.location_text}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {timeAgo(report.submitted_at)}
+                  </p>
+                </button>
+              ))
+            )}
+          </CardContent>
+        </Card>
 
         {/* Recent Alerts */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Recent Alerts</CardTitle>
+            <CardTitle className="text-lg">{t('dashboard.recent_alerts', 'Recent Alerts')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {recentAlerts.length === 0 ? (
               <p className="text-sm text-muted-foreground py-4 text-center">
-                No new alerts
+                {t('dashboard.no_new_alerts', 'No new alerts')}
               </p>
             ) : (
               recentAlerts.map((alert) => {

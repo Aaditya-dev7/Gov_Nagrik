@@ -120,34 +120,23 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     if (!sb) return;
     let mounted = true;
 
-    // If we already have cached reports, skip initial DB fetch to avoid a UI "snap"
-    // but still subscribe to realtime updates.
-    let skipInitial = false;
-    try {
-      if (typeof window !== 'undefined') {
-        skipInitial = Boolean(localStorage.getItem(REPORTS_STORAGE_KEY));
-      }
-    } catch {}
-
     async function loadInitial() {
       const { data: repData } = await sb.from('reports').select('*').order('submitted_at', { ascending: false });
       const mapped = (repData || []).map(mapDbToReport);
       // Hide resolved reports older than 30 days in the UI
       const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
       const filtered = mapped.filter(r => !(r.status === 'Resolved' && new Date(r.submitted_at).getTime() < cutoff));
-      // Merge DB data with existing state, preferring existing (local) state for overlapping IDs
+      // Merge DB data with existing state, adding new DB reports to existing local state
       if (mounted && filtered.length > 0) {
         setReports(prev => {
           const byId = new Map(prev.map(r => [r.report_id, r] as const));
           const merged: Report[] = [];
+          // Add all DB reports first (they take precedence for status/assignment updates)
           for (const r of filtered) {
-            if (byId.has(r.report_id)) {
-              merged.push(byId.get(r.report_id)!);
-              byId.delete(r.report_id);
-            } else {
-              merged.push(r);
-            }
+            merged.push(r);
+            byId.delete(r.report_id);
           }
+          // Add any local-only reports not in DB
           for (const leftover of byId.values()) merged.push(leftover);
           return merged;
         });
@@ -180,9 +169,8 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (!skipInitial) {
-      loadInitial();
-    }
+    // Always load initial data from DB to sync citizen-submitted reports
+    loadInitial();
 
     const chan = sb.channel('reports_and_timeline');
     chan.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, async payload => {
