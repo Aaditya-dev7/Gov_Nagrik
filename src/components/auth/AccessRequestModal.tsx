@@ -241,26 +241,6 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
             verified: false,
           });
         } catch {}
-        // Attempt to notify all admins and the user via edge function (optional)
-        try {
-          const baseUrl = (import.meta as any).env?.BASE_URL || '/';
-          const setPasswordLink = `${window.location.origin}${baseUrl}?set_password=1&email=${encodeURIComponent(officialEmail)}`;
-          await sb.functions.invoke('send-access-request', {
-            body: {
-              admin_to_emails: toEmails,
-              user_to_email: officialEmail,
-              full_name: fullName,
-              official_email: officialEmail,
-              department,
-              designation,
-              employee_id: employeeId,
-              purpose,
-              role,
-              submitted_at,
-              set_password_link: setPasswordLink,
-            }
-          });
-        } catch {}
       }
 
       toast({

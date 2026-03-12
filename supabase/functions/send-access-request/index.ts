@@ -57,7 +57,24 @@ Deno.serve(async (req: Request) => {
       role,
       submitted_at,
       set_password_link,
+      request_id,
+      redirect_to,
     } = await req.json();
+
+    const APPROVAL_TOKEN = Deno.env.get("APPROVAL_TOKEN") ?? "";
+    const approveBase = (Deno.env.get("APPROVE_FUNCTION_URL") || "").trim();
+
+    const buildApproveUrl = (action: 'approve' | 'reject') => {
+      if (!approveBase) return "";
+      const url = new URL(approveBase);
+      if (request_id != null) url.searchParams.set('request_id', String(request_id));
+      url.searchParams.set('action', action);
+      if (typeof redirect_to === 'string' && redirect_to.trim().length > 0) {
+        url.searchParams.set('redirect_to', redirect_to.trim());
+      }
+      if (APPROVAL_TOKEN) url.searchParams.set('token', APPROVAL_TOKEN);
+      return url.toString();
+    };
 
     // ✅ SendGrid helper
     const sendEmail = async (to: string, subject: string, html: string) => {
@@ -89,6 +106,9 @@ Deno.serve(async (req: Request) => {
         ? [admin_to_email]
         : [];
 
+    const approveUrl = buildApproveUrl('approve');
+    const rejectUrl = buildApproveUrl('reject');
+
     const adminHtml = `
       <p>
         <b>Name:</b> ${full_name}<br/>
@@ -100,6 +120,9 @@ Deno.serve(async (req: Request) => {
         <b>Submitted:</b> ${submitted_at}<br/>
         <b>Purpose:</b> ${purpose}
       </p>
+      ${approveUrl ? `<p><a href="${approveUrl}"><b>Approve request</b></a></p>` : ``}
+      ${rejectUrl ? `<p><a href="${rejectUrl}">Reject request</a></p>` : ``}
+      ${!approveUrl ? `<p><i>Approve link not configured. Set APPROVE_FUNCTION_URL in Supabase Vault.</i></p>` : ``}
     `;
 
     const results: any[] = [];
