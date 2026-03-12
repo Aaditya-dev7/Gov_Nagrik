@@ -29,6 +29,15 @@ export interface TimelineItem {
   at: string;
 }
 
+export interface ResolutionDocument {
+  id: string;
+  name: string;
+  url: string;
+  type: 'pdf' | 'image' | 'document';
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
 export interface Report {
   report_id: string;
   category: string;
@@ -49,7 +58,11 @@ export interface Report {
   assigned_department: string;
   assigned_officer_id: string | null;
   assigned_officer_name: string;
+  assigned_officer_phone?: string | null;
+  assigned_officer_email?: string | null;
   timeline: TimelineItem[];
+  resolution_documents?: ResolutionDocument[];
+  resolution_note?: string;
 }
 
 export interface Notification {

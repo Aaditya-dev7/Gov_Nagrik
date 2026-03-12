@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReports } from '@/contexts/ReportsContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/data';
 import { t, useLang } from '@/lib/i18n';
+import { getSupabase } from '@/lib/supabase';
 import { 
   FileText, 
   Clock, 
@@ -39,15 +40,65 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
   const { user, isAdmin } = useAuth();
   const { reports, notifications, requestAssignment } = useReports();
   const _lang = useLang();
+  
+  // Database stats state
+  const [dbStats, setDbStats] = useState<{ total: number; pending: number; inProgress: number; resolved: number; urgent: number } | null>(null);
 
-  // Calculate stats
-  const base = reports;
-  const stats = {
-    total: base.length,
-    pending: base.filter(r => r.status === 'Pending').length,
-    inProgress: base.filter(r => r.status === 'In Progress').length,
-    resolved: base.filter(r => r.status === 'Resolved').length,
-    urgent: base.filter(r => r.priority === 'Urgent').length,
+  // Fetch stats from database
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb) return;
+    
+    async function fetchStats() {
+      try {
+        const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        
+        // Get counts from database
+        const [
+          totalRes,
+          pendingRes,
+          inProgressRes,
+          resolvedRecentRes,
+          resolvedOldRes,
+          urgentRes
+        ] = await Promise.all([
+          sb.from('reports').select('*', { count: 'exact', head: true }),
+          sb.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'Pending'),
+          sb.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'In Progress'),
+          sb.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'Resolved').gte('submitted_at', cutoff),
+          sb.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'Resolved').lt('submitted_at', cutoff),
+          sb.from('reports').select('*', { count: 'exact', head: true }).eq('priority', 'Urgent'),
+        ]);
+        
+        const totalAll = totalRes.count || 0;
+        const oldResolved = resolvedOldRes.count || 0;
+        
+        setDbStats({
+          total: Math.max(0, totalAll - oldResolved), // Hide old resolved from total
+          pending: pendingRes.count || 0,
+          inProgress: inProgressRes.count || 0,
+          resolved: resolvedRecentRes.count || 0,
+          urgent: urgentRes.count || 0,
+        });
+      } catch (err) {
+        console.error('Failed to fetch stats:', err);
+      }
+    }
+    
+    fetchStats();
+    
+    // Refresh stats every 30 seconds
+    const interval = setInterval(fetchStats, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Use database stats if available, otherwise fall back to local
+  const stats = dbStats || {
+    total: reports.length,
+    pending: reports.filter(r => r.status === 'Pending').length,
+    inProgress: reports.filter(r => r.status === 'In Progress').length,
+    resolved: reports.filter(r => r.status === 'Resolved').length,
+    urgent: reports.filter(r => r.priority === 'Urgent').length,
   };
 
   const recentReports = reports

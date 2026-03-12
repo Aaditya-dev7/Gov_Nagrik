@@ -18,7 +18,7 @@ import { t, useLang } from '@/lib/i18n';
 
 export function MainApp() {
   const { isAdmin, user } = useAuth();
-  const { reports } = useReports();
+  const { reports, isLoading } = useReports();
   const _lang = useLang();
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
   const [dashboardFilter, setDashboardFilter] = useState('all');
@@ -27,22 +27,6 @@ export function MainApp() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [assignedOnlyUserId, setAssignedOnlyUserId] = useState<string | null>(null);
   const [reportsPresetFilters, setReportsPresetFilters] = useState<{ status?: string[]; priority?: string[] } | null>(null);
-
-  const handleNavigate = (page: string) => {
-    // Prevent non-admins from accessing admin pages
-    if ((page === 'users' || page === 'departments') && !isAdmin) {
-      return;
-    }
-    if (page === 'reports') {
-      // Show All Reports by default; officers can switch to assigned-only via dashboard action
-      setAssignedOnlyUserId(null);
-    }
-    if (page !== 'reports') {
-      // Clear any preset filters when leaving Reports
-      setReportsPresetFilters(null);
-    }
-    setCurrentPage(page);
-  };
 
   // Load last page for role and ensure correct landing page after login/role change
   useEffect(() => {
@@ -77,6 +61,34 @@ export function MainApp() {
   useEffect(() => {
     try { localStorage.setItem(isAdmin ? 'admin:lastPage' : 'officer:lastPage', currentPage); } catch {}
   }, [currentPage, isAdmin]);
+
+  // Show loading state while reports are being fetched - MUST be after all hooks
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-muted-foreground">{t('common.loading', 'Loading reports...')}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const handleNavigate = (page: string) => {
+    // Prevent non-admins from accessing admin pages
+    if ((page === 'users' || page === 'departments') && !isAdmin) {
+      return;
+    }
+    if (page === 'reports') {
+      // Show All Reports by default; officers can switch to assigned-only via dashboard action
+      setAssignedOnlyUserId(null);
+    }
+    if (page !== 'reports') {
+      // Clear any preset filters when leaving Reports
+      setReportsPresetFilters(null);
+    }
+    setCurrentPage(page);
+  };
 
   const handleOpenReport = (reportId: string) => {
     const report = reports.find(r => r.report_id === reportId);

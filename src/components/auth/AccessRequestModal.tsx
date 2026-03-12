@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, Shield, CheckCircle } from 'lucide-react';
 import { mockDepartments } from '@/lib/data';
 import { getSupabase } from '@/lib/supabase';
 
@@ -22,10 +22,33 @@ const ADMIN_EMAILS = [
   'nishant.jadhav_siot23@comp.sce.edu.in',
 ];
 
+// STRICT: Allowed official email domains
+const ALLOWED_EMAIL_DOMAINS = [
+  '.gov.in',
+  '.nic.in',
+  'nagarpalika.gov.in',
+  'maharashtra.gov.in',
+  'mumbai.gov.in',
+  'pune.gov.in',
+  'comp.sce.edu.in', // For college project admins
+  'sce.edu.in',
+];
+
+// Department-specific email patterns
+const DEPARTMENT_EMAIL_PATTERNS: Record<string, string[]> = {
+  'Roads': ['roads', 'pwd', 'rwd'],
+  'Sanitation': ['sanitation', 'swachh', 'cleanliness'],
+  'Water Supply': ['water', 'jal', 'wsd'],
+  'Drainage': ['drainage', 'storm', 'sewage'],
+  'Street Lighting': ['lighting', 'electricity', 'led'],
+  'Administration': ['admin', 'secretary', 'commissioner'],
+};
+
 export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [certified, setCertified] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const [fullName, setFullName] = useState('');
   const [officialEmail, setOfficialEmail] = useState('');
@@ -35,23 +58,140 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
   const [purpose, setPurpose] = useState('');
   const [role, setRole] = useState<'admin' | 'officer'>('officer');
 
+  // Validation state
+  const [emailValid, setEmailValid] = useState<boolean | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
+  // Validate official email domain
+  const validateOfficialEmail = (email: string): { valid: boolean; error?: string } => {
+    const emailLower = email.toLowerCase().trim();
+    
+    if (!emailLower.includes('@')) {
+      return { valid: false, error: 'Please enter a valid email address' };
+    }
+    
+    const domain = emailLower.split('@')[1] || '';
+    
+    // Check if domain matches any allowed pattern
+    const isAllowed = ALLOWED_EMAIL_DOMAINS.some(allowed => 
+      domain === allowed || domain.endsWith(allowed)
+    );
+    
+    if (!isAllowed) {
+      return { 
+        valid: false, 
+        error: 'Only official government email addresses are accepted (.gov.in, .nic.in). Personal emails (gmail, yahoo, etc.) are not allowed.' 
+      };
+    }
+    
+    // Check department email pattern match (warning only)
+    if (department && DEPARTMENT_EMAIL_PATTERNS[department]) {
+      const patterns = DEPARTMENT_EMAIL_PATTERNS[department];
+      const hasPattern = patterns.some(p => emailLower.includes(p));
+      if (!hasPattern) {
+        // Just a warning, still allow submission
+        console.log('Email may not match department pattern');
+      }
+    }
+    
+    return { valid: true };
+  };
+
+  const handleEmailChange = (email: string) => {
+    setOfficialEmail(email);
+    if (email.includes('@')) {
+      const result = validateOfficialEmail(email);
+      setEmailValid(result.valid);
+      setEmailError(result.error || null);
+    } else {
+      setEmailValid(null);
+      setEmailError(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!fullName || !officialEmail || !department || !designation || !purpose || !certified) {
+    // STRICT VALIDATION
+    if (!fullName || fullName.trim().length < 2) {
       toast({
-        title: 'Missing information',
-        description: 'Please complete all required fields and certify the information.',
+        title: 'Invalid Name',
+        description: 'Please enter your full name (at least 2 characters).',
         variant: 'destructive',
       });
       return;
     }
 
-    // Relaxed validation: allow any email format with '@' so requests are always captured during testing
-    if (!officialEmail.includes('@')) {
+    if (!officialEmail || !officialEmail.includes('@')) {
       toast({
-        title: 'Invalid email',
+        title: 'Invalid Email',
         description: 'Please enter a valid email address.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Strict email domain validation
+    const emailValidation = validateOfficialEmail(officialEmail);
+    if (!emailValidation.valid) {
+      toast({
+        title: 'Official Email Required',
+        description: emailValidation.error,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!department) {
+      toast({
+        title: 'Department Required',
+        description: 'Please select your department.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!designation || designation.trim().length < 2) {
+      toast({
+        title: 'Invalid Designation',
+        description: 'Please enter your designation.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Employee ID is now REQUIRED for strict auth
+    if (!employeeId || employeeId.trim().length < 3) {
+      toast({
+        title: 'Employee ID Required',
+        description: 'Please enter your Employee ID for verification purposes.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!purpose || purpose.trim().length < 20) {
+      toast({
+        title: 'Purpose Too Short',
+        description: 'Please provide a detailed explanation (at least 20 characters) of why you need access.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!certified) {
+      toast({
+        title: 'Certification Required',
+        description: 'Please certify that you are a government employee.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!agreedToTerms) {
+      toast({
+        title: 'Terms Required',
+        description: 'Please agree to the terms and conditions.',
         variant: 'destructive',
       });
       return;
@@ -66,7 +206,18 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       try {
         const key = 'nagrikGPT_access_requests';
         const list = JSON.parse(localStorage.getItem(key) || '[]') as any[];
-        list.push({ fullName, officialEmail, department, designation, employeeId: employeeId || 'N/A', purpose, role, submitted_at });
+        list.push({ 
+          fullName, 
+          officialEmail, 
+          department, 
+          designation, 
+          employeeId, 
+          purpose, 
+          role, 
+          submitted_at,
+          status: 'pending_verification',
+          verified: false,
+        });
         localStorage.setItem(key, JSON.stringify(list));
       } catch {}
     };
@@ -82,10 +233,12 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
             official_email: officialEmail,
             department,
             designation,
-            employee_id: employeeId || null,
+            employee_id: employeeId,
             purpose,
             role,
             submitted_at,
+            status: 'pending_verification',
+            verified: false,
           });
         } catch {}
         // Attempt to notify all admins and the user via edge function (optional)
@@ -100,7 +253,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
               official_email: officialEmail,
               department,
               designation,
-              employee_id: employeeId || 'N/A',
+              employee_id: employeeId,
               purpose,
               role,
               submitted_at,
@@ -112,7 +265,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
 
       toast({
         title: 'Request Submitted',
-        description: `Your request has been recorded${sb ? ' and sent for processing' : ''}.`,
+        description: `Your request has been recorded and is pending verification. You will receive an email once approved.`,
       });
 
       setFullName('');
@@ -122,7 +275,9 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       setEmployeeId('');
       setPurpose('');
       setCertified(false);
-      setRole('officer');
+      setAgreedToTerms(false);
+      setEmailValid(null);
+      setEmailError(null);
       onOpenChange(false);
     } catch (err) {
       // Email delivery failed – record locally to avoid data loss
@@ -134,10 +289,12 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
             official_email: officialEmail,
             department,
             designation,
-            employee_id: employeeId || null,
+            employee_id: employeeId,
             purpose,
             role,
             submitted_at,
+            status: 'pending_verification',
+            verified: false,
           });
         } catch {}
       }
@@ -160,9 +317,20 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           </DialogDescription>
         </DialogHeader>
 
+        {/* Strict Auth Warning */}
+        <div className="bg-warning-light border border-warning/30 rounded-lg p-3 mb-4">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+            <div className="text-sm text-warning">
+              <span className="font-medium">Strict Verification Required</span>
+              <p className="text-xs mt-1">Only official government emails (.gov.in, .nic.in) are accepted. All requests are verified with your department before approval.</p>
+            </div>
+          </div>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
           <div className="space-y-2">
-            <Label htmlFor="fullName">Full Name</Label>
+            <Label htmlFor="fullName">Full Name <span className="text-destructive">*</span></Label>
             <Input
               id="fullName"
               placeholder="Enter your full name"
@@ -173,19 +341,33 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="officialEmail">Official Email</Label>
+            <Label htmlFor="officialEmail">Official Email <span className="text-destructive">*</span></Label>
             <Input
               id="officialEmail"
               type="email"
               placeholder="your.name@nagarpalika.gov.in"
               required
               value={officialEmail}
-              onChange={(e) => setOfficialEmail(e.target.value)}
+              onChange={(e) => handleEmailChange(e.target.value)}
+              className={emailValid === false ? 'border-destructive' : emailValid === true ? 'border-success' : ''}
             />
+            {emailValid === false && emailError && (
+              <p className="text-xs text-destructive flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {emailError}
+              </p>
+            )}
+            {emailValid === true && (
+              <p className="text-xs text-success flex items-center gap-1">
+                <CheckCircle className="w-3 h-3" />
+                Official email domain verified
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">Only .gov.in or .nic.in email addresses are accepted</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Role</Label>
+            <Label htmlFor="role">Role <span className="text-destructive">*</span></Label>
             <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'officer')}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Role" />
@@ -198,7 +380,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="department">Department</Label>
+            <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
             <Select value={department} onValueChange={setDepartment}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Department" />
@@ -213,10 +395,10 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="designation">Designation</Label>
+            <Label htmlFor="designation">Designation <span className="text-destructive">*</span></Label>
             <Input
               id="designation"
-              placeholder="Your current designation"
+              placeholder="Your current designation (e.g., Junior Engineer)"
               required
               value={designation}
               onChange={(e) => setDesignation(e.target.value)}
@@ -224,25 +406,28 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="employeeId">Employee ID (if any)</Label>
+            <Label htmlFor="employeeId">Employee ID <span className="text-destructive">*</span></Label>
             <Input
               id="employeeId"
-              placeholder="Optional"
+              placeholder="Required for verification (e.g., EMP12345)"
+              required
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">Your Employee ID will be verified with your department</p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="purpose">Purpose of Access</Label>
+            <Label htmlFor="purpose">Purpose of Access <span className="text-destructive">*</span></Label>
             <Textarea
               id="purpose"
-              placeholder="Explain why you need access to the portal"
-              rows={3}
+              placeholder="Explain in detail why you need access to the portal (min 20 characters)"
+              rows={4}
               required
               value={purpose}
               onChange={(e) => setPurpose(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">{purpose.length}/20 characters minimum</p>
           </div>
 
           <div className="flex items-start gap-2">
@@ -253,14 +438,26 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
               required 
             />
             <Label htmlFor="certify" className="text-sm font-normal leading-relaxed cursor-pointer">
-              I certify that I am a government employee and all information provided is accurate.
+              I certify that I am a government employee and all information provided is accurate. <span className="text-destructive">*</span>
+            </Label>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <Checkbox 
+              id="terms" 
+              checked={agreedToTerms}
+              onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+              required 
+            />
+            <Label htmlFor="terms" className="text-sm font-normal leading-relaxed cursor-pointer">
+              I agree to the <a href="#" className="text-primary hover:underline">Terms of Service</a> and <a href="#" className="text-primary hover:underline">Privacy Policy</a>. I understand that providing false information may result in account termination. <span className="text-destructive">*</span>
             </Label>
           </div>
 
           <Button 
             type="submit" 
             className="w-full" 
-            disabled={isSubmitting || !certified}
+            disabled={isSubmitting || !certified || !agreedToTerms}
           >
             {isSubmitting ? (
               <>
@@ -268,7 +465,10 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
                 Submitting...
               </>
             ) : (
-              'Submit Request'
+              <>
+                <Shield className="w-4 h-4 mr-2" />
+                Submit Request for Verification
+              </>
             )}
           </Button>
         </form>

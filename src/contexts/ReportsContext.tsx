@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Report, Notification } from '@/lib/types';
-import { mockReports as initialReports, mockNotifications as initialNotifications } from '@/lib/data';
 import { loadEmailAlertSettings } from '@/lib/userSettings';
 import { getSupabase } from '@/lib/supabase';
 
@@ -67,12 +66,15 @@ function reportToDbRow(r: Report): Record<string, any> {
     assigned_department: r.assigned_department,
     assigned_officer_id: r.assigned_officer_id,
     assigned_officer_name: r.assigned_officer_name,
+    resolution_documents: r.resolution_documents ?? null,
+    resolution_note: r.resolution_note ?? null,
   } as Record<string, any>;
 }
 
 interface ReportsContextType {
   reports: Report[];
   notifications: Notification[];
+  isLoading: boolean;
   updateReportStatus: (reportId: string, status: Report['status'], actor: string, reason?: string) => void;
   addProgressNote: (reportId: string, note: string, actor: string) => void;
   addReport: (data: NewReportData) => void;
@@ -151,12 +153,14 @@ async function generateAiSummary(params: { description: string; category: string
 }
 
 function mapDbToReport(row: any): Report {
+  const desc = String(row.description || '');
+  const fallbackSummary = `${String(row.category || 'Issue')} issue: ${desc.split(' ').slice(0, 15).join(' ')}${desc.split(' ').length > 15 ? '...' : ''}`;
   return {
     report_id: row.id,
     category: row.category,
     other_category: row.other_category ?? undefined,
     description: row.description,
-    summary: row.summary ?? '',
+    summary: (typeof row.summary === 'string' && row.summary.trim().length > 0) ? row.summary : fallbackSummary,
     report_score: typeof row.report_score === 'number' ? row.report_score : (row.report_score != null ? Number(row.report_score) : undefined),
     priority: row.priority,
     status: row.status,
@@ -171,7 +175,11 @@ function mapDbToReport(row: any): Report {
     assigned_department: row.assigned_department || 'Administration',
     assigned_officer_id: row.assigned_officer_id || null,
     assigned_officer_name: row.assigned_officer_name || 'Unassigned',
+    assigned_officer_phone: row.assigned_officer_phone || null,
+    assigned_officer_email: row.assigned_officer_email || null,
     timeline: [],
+    resolution_documents: row.resolution_documents ?? undefined,
+    resolution_note: row.resolution_note ?? undefined,
   } as Report;
 }
 
@@ -204,14 +212,11 @@ function isOverdue(r: Report, now = Date.now()): boolean {
 
 export function ReportsProvider({ children }: { children: ReactNode }) {
   const [reports, setReports] = useState<Report[]>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem(REPORTS_STORAGE_KEY);
-        if (raw) return JSON.parse(raw) as Report[];
-      }
-    } catch {}
-    return initialReports;
+    // Don't load mock reports - will be loaded from database
+    return [];
   });
+  
+  const [isLoading, setIsLoading] = useState(true);
 
   const maybeEscalateOverdue = (r: Report) => {
     if (!r) return;
@@ -277,76 +282,83 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     }
   };
   const [notifications, setNotifications] = useState<Notification[]>(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem(NOTIFS_STORAGE_KEY);
-        if (raw) return JSON.parse(raw) as Notification[];
-      }
-    } catch {}
-    return initialNotifications;
+    // Don't load mock notifications - will be loaded from database
+    return [];
   });
 
   // Load from Supabase if configured and subscribe to realtime changes
   useEffect(() => {
     const sb = getSupabase();
-    if (!sb) return;
+    if (!sb) {
+      // No Supabase - use mock data and finish loading
+      setIsLoading(false);
+      return;
+    }
     let mounted = true;
 
     async function loadInitial() {
-      const { data: repData } = await sb.from('reports').select('*').order('submitted_at', { ascending: false });
-      const mapped = (repData || []).map(mapDbToReport);
-      // Hide resolved reports older than 30 days in the UI
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      const filtered = mapped.filter(r => !(r.status === 'Resolved' && new Date(r.submitted_at).getTime() < cutoff));
-      // Merge DB data with existing state, adding new DB reports to existing local state
-      if (mounted && filtered.length > 0) {
-        setReports(prev => {
-          const byId = new Map(prev.map(r => [r.report_id, r] as const));
-          const merged: Report[] = [];
-          // Add all DB reports first (they take precedence for status/assignment updates)
-          for (const r of filtered) {
-            merged.push(r);
-            byId.delete(r.report_id);
-          }
-          // Add any local-only reports not in DB
-          for (const leftover of byId.values()) merged.push(leftover);
-          return merged;
-        });
-      }
-      // Load media from Supabase Storage bucket 'reports' for each report id
       try {
-        const mediaMap: Record<string, string[]> = {};
-        for (const r of filtered) {
-          const { data: files } = await sb.storage.from('reports').list(r.report_id);
-          if (files && files.length) {
-            const urls: string[] = [];
-            for (const f of files) {
-              const { data } = sb.storage.from('reports').getPublicUrl(`${r.report_id}/${f.name}`);
-              if (data?.publicUrl) urls.push(data.publicUrl);
+        const { data: repData } = await sb.from('reports').select('*').order('submitted_at', { ascending: false });
+        const mapped = (repData || []).map(mapDbToReport);
+        // Hide resolved reports older than 30 days in the UI
+        const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const filtered = mapped.filter(r => !(r.status === 'Resolved' && new Date(r.submitted_at).getTime() < cutoff));
+        // Merge DB data with existing state, adding new DB reports to existing local state
+        if (mounted) {
+          if (filtered.length > 0) {
+            setReports(prev => {
+              const byId = new Map(prev.map(r => [r.report_id, r] as const));
+              const merged: Report[] = [];
+              // Add all DB reports first (they take precedence for status/assignment updates)
+              for (const r of filtered) {
+                merged.push(r);
+                byId.delete(r.report_id);
+              }
+              // Add any local-only reports not in DB
+              for (const leftover of byId.values()) merged.push(leftover);
+              return merged;
+            });
+          }
+          // Load media from Supabase Storage bucket 'reports' for each report id
+          try {
+            const mediaMap: Record<string, string[]> = {};
+            for (const r of filtered) {
+              const { data: files } = await sb.storage.from('reports').list(r.report_id);
+              if (files && files.length) {
+                const urls: string[] = [];
+                for (const f of files) {
+                  const { data } = sb.storage.from('reports').getPublicUrl(`${r.report_id}/${f.name}`);
+                  if (data?.publicUrl) urls.push(data.publicUrl);
+                }
+                mediaMap[r.report_id] = urls;
+              }
             }
-            mediaMap[r.report_id] = urls;
+            if (mounted) setReports(prev => prev.map(r => ({ ...r, media: mediaMap[r.report_id] || r.media || [] })));
+          } catch {}
+          const ids = mapped.map(r => r.report_id);
+          if (ids.length) {
+            const { data: tData } = await sb.from('report_timeline').select('*').in('report_id', ids).order('at', { ascending: true });
+            if (mounted && tData) {
+              setReports(prev => prev.map(r => ({
+                ...r,
+                timeline: tData.filter(t => t.report_id === r.report_id).map(t => ({ actor: t.actor, action: t.action, at: t.at }))
+              })));
+            }
           }
-        }
-        if (mounted) setReports(prev => prev.map(r => ({ ...r, media: mediaMap[r.report_id] || r.media || [] })));
-      } catch {}
-      const ids = mapped.map(r => r.report_id);
-      if (ids.length) {
-        const { data: tData } = await sb.from('report_timeline').select('*').in('report_id', ids).order('at', { ascending: true });
-        if (mounted && tData) {
-          setReports(prev => prev.map(r => ({
-            ...r,
-            timeline: tData.filter(t => t.report_id === r.report_id).map(t => ({ actor: t.actor, action: t.action, at: t.at }))
-          })));
-        }
-      }
 
-      // Load notifications from DB if table exists
-      try {
-        const { data: nData } = await sb.from('notifications').select('*').order('timestamp', { ascending: false });
-        if (mounted && nData && nData.length) {
-          setNotifications(nData.map(mapDbToNotif));
+          // Load notifications from DB if table exists
+          try {
+            const { data: nData } = await sb.from('notifications').select('*').order('timestamp', { ascending: false });
+            if (mounted && nData && nData.length) {
+              setNotifications(nData.map(mapDbToNotif));
+            }
+          } catch {}
         }
-      } catch {}
+      } catch (err) {
+        console.error('Failed to load reports from database:', err);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
     }
 
     // Always load initial data from DB to sync citizen-submitted reports
@@ -379,13 +391,17 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       setNotifications(prev => [notif, ...prev]);
     });
     chan.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'reports' }, payload => {
-      setReports(prev => prev.map(r => r.report_id === payload.new.id ? {
-        ...r,
-        status: payload.new.status,
-        assigned_department: payload.new.assigned_department || r.assigned_department,
-        assigned_officer_id: payload.new.assigned_officer_id ?? r.assigned_officer_id,
-        assigned_officer_name: payload.new.assigned_officer_name || r.assigned_officer_name,
-      } : r));
+      const updated = mapDbToReport(payload.new);
+      setReports(prev => prev.map(r => {
+        if (r.report_id !== payload.new.id) return r;
+        return {
+          ...r,
+          ...updated,
+          // Preserve locally-loaded/derived fields
+          media: r.media || updated.media || [],
+          timeline: r.timeline || updated.timeline || [],
+        };
+      }));
     });
     chan.on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'reports' }, payload => {
       setReports(prev => prev.filter(r => r.report_id !== payload.old.id));
@@ -416,14 +432,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     return () => { mounted = false; sb.removeChannel(chan); };
   }, []);
 
-  // Persist to localStorage as a cache so state survives dev server restarts and reloads
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(reports));
-      }
-    } catch {}
-  }, [reports]);
+  // NOTE: DB is the source of truth; we intentionally do not persist report lists to localStorage.
 
   // Periodically check for overdue reports and escalate once
   useEffect(() => {
@@ -442,13 +451,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, [reports]);
 
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(NOTIFS_STORAGE_KEY, JSON.stringify(notifications));
-      }
-    } catch {}
-  }, [notifications]);
+  // NOTE: DB is the source of truth; we intentionally do not persist notifications to localStorage.
 
   // Prune notifications older than 24 hours, and hide resolved reports older than 30 days periodically
   useEffect(() => {
@@ -465,50 +468,79 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
 
   const updateReportStatus = (reportId: string, status: Report['status'], actor: string, reason?: string) => {
     const at = new Date().toISOString();
+    const action = reason ? `Marked as ${status} - "${reason}"` : `Marked as ${status}`;
+    
+    // Update local state immediately
     setReports(prev => prev.map(report => {
       if (report.report_id === reportId) {
-        const action = reason ? `Marked as ${status} - "${reason}"` : `Marked as ${status}`;
         return { ...report, status, timeline: [...report.timeline, { actor, action, at }] };
       }
       return report;
     }));
+    
+    // Add notification to local state
+    const notif: any = {
+      id: `notif-${Date.now()}`,
+      message: `Report ${reportId} marked as ${status}`,
+      timestamp: at,
+      read: false,
+      report_id: reportId,
+      meta: { type: 'status', actor },
+    };
+    setNotifications(prev => [notif, ...prev]);
+    
+    // Sync with database
     const sb = getSupabase();
     if (sb) {
-      const current = reports.find(r => r.report_id === reportId) || null;
-      (async () => {
-        const { data, error } = await sb.from('reports').update({ status }).eq('id', reportId).select('id');
-        if (error) { try { console.error('Supabase update status failed', error); } catch {} }
-        if (!data || data.length === 0) {
-          // Row missing, upsert the full record
-          const base = current ? { ...current, status } as Report : ({
-            report_id: reportId, category: 'Issue', description: '', summary: '', priority: 'Low', status,
-            submitted_at: at, location_text: '', lat: 0, lng: 0,
-            reporter: { name: 'Citizen', phone: null, anonymous: true }, media: [],
-            assigned_department: 'Administration', assigned_officer_id: null, assigned_officer_name: 'Unassigned', timeline: []
-          } as Report);
-          await sb.from('reports').upsert(reportToDbRow(base));
-        }
-        const actionText = reason ? `Marked as ${status} - "${reason}"` : `Marked as ${status}`;
-        {
-          const { error } = await sb.from('report_timeline').insert({ report_id: reportId, actor, action: actionText, at });
-          if (error) { try { console.error('Supabase insert report_timeline failed', error); } catch {} }
-        }
-
-        // Notify citizen on important status changes
-        if (status === 'In Progress' || status === 'Resolved') {
-          const notif: any = {
-            id: `notif-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            message: `Your report ${reportId} is now ${status}`,
-            timestamp: at,
-            read: false,
-            report_id: reportId,
-            meta: { type: 'status', actor },
-            recipient_role: 'citizen',
-          };
-          const { error } = await sb.from('notifications').upsert(notifToDbRow(notif));
-          if (error) { try { console.error('Supabase upsert status notification failed', error); } catch {} }
-        }
-      })();
+      // Update status in database
+      sb.from('reports').update({ status }).eq('id', reportId)
+        .then(({ error, data }) => {
+          if (error) {
+            console.error('Supabase update status failed', error);
+          } else {
+            console.log('Status updated in database:', reportId, status);
+          }
+        });
+      
+      // Add timeline entry
+      sb.from('report_timeline').insert({ report_id: reportId, actor, action, at })
+        .then(({ error }) => {
+          if (error) console.error('Supabase insert timeline failed', error);
+        });
+      
+      // Create notification for citizen
+      const citizenNotif = {
+        id: `notif-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        message: `Your report ${reportId} is now ${status}${reason ? ` - ${reason}` : ''}`,
+        timestamp: at,
+        read: false,
+        report_id: reportId,
+        recipient_role: 'citizen',
+        type: 'status',
+        actor,
+      };
+      
+      sb.from('notifications').upsert(notifToDbRow(citizenNotif))
+        .then(({ error }) => {
+          if (error) console.error('Supabase insert citizen notification failed', error);
+        });
+      
+      // Create notification for admin
+      const adminNotif = {
+        id: `notif-${Date.now()}-${Math.random().toString(16).slice(2)}-admin`,
+        message: `Report ${reportId} marked as ${status} by ${actor}`,
+        timestamp: at,
+        read: false,
+        report_id: reportId,
+        recipient_role: 'admin',
+        type: 'status',
+        actor,
+      };
+      
+      sb.from('notifications').upsert(notifToDbRow(adminNotif))
+        .then(({ error }) => {
+          if (error) console.error('Supabase insert admin notification failed', error);
+        });
     }
   };
 
@@ -742,6 +774,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     <ReportsContext.Provider value={{
       reports,
       notifications,
+      isLoading,
       updateReportStatus,
       addProgressNote,
       addReport,

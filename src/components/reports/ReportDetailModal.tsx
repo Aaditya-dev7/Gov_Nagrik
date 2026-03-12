@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { getSupabase } from '@/lib/supabase';
 import { 
   Calendar, 
   MapPin, 
@@ -26,10 +27,15 @@ import {
   FileText,
   X,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  File,
+  AlertTriangle,
+  Timer
 } from 'lucide-react';
 import { correctDescription, analyzeImageDescription } from '@/lib/ai';
 import { reverseGeocode, isCoordinateInIndia } from '@/lib/geocoding';
+import { findMatchingCategory, getPriorityFromDescription } from '@/lib/summarizer';
 
 interface ReportDetailModalProps {
   report: Report | null;
@@ -42,12 +48,22 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const { updateReportStatus, addProgressNote, updateAssignment, deleteReport } = useReports();
   const { toast } = useToast();
   
+  // Error state for catching render errors
+  const [renderError, setRenderError] = useState<Error | null>(null);
+  
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [progressNote, setProgressNote] = useState('');
   const [notifyCitizen, setNotifyCitizen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
+  // Document upload for resolution
+  const [showResolveDialog, setShowResolveDialog] = useState(false);
+  const [resolutionDocument, setResolutionDocument] = useState<File | null>(null);
+  const [resolutionNote, setResolutionNote] = useState('');
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [resolutionDocUrl, setResolutionDocUrl] = useState<string | null>(null);
 
   const [aiLoading, setAiLoading] = useState(false);
   const [corrected, setCorrected] = useState<string | null>(null);
@@ -59,6 +75,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     if (!open || !report) return;
     let cancelled = false;
     setAiLoading(true);
+    setRenderError(null); // Clear any previous errors
     (async () => {
       try {
         const [corr, img, rev] = await Promise.all([
@@ -71,6 +88,11 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
         setImgCheck(img);
         setRevAddr(rev);
         setInIndia(isCoordinateInIndia(report.lat, report.lng));
+      } catch (err) {
+        console.error('AI analysis error:', err);
+        // Don't set error, just use defaults
+        setCorrected(report.description);
+        setImgCheck({ ok: true });
       } finally {
         if (!cancelled) setAiLoading(false);
       }
@@ -92,10 +114,17 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
 
   if (!report) return null;
 
+  // STRICT LOGIC: Only assigned officer can act on the report
+  // Admin can also act on any report (full access)
   const officerCanAct = Boolean(
-    isAdmin ||
-    (user?.id && report.assigned_officer_id && report.assigned_officer_id === user.id)
+    isAdmin || (user?.id && report.assigned_officer_id && report.assigned_officer_id === user.id)
   );
+  
+  // Admin can only assign, not act directly
+  const adminCanAssign = isAdmin;
+  
+  // Check if report is assigned to current user (officer)
+  const isAssignedToCurrentUser = report.assigned_officer_id === user?.id;
 
   const getDeadlineDays = (priority: string) => {
     switch (priority) {
@@ -156,10 +185,140 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     onOpenChange(false);
   };
 
-  const handleMarkResolved = () => {
-    updateReportStatus(report.report_id, 'Resolved', user?.name || 'Unknown');
-    toast({ title: "Status Updated", description: "Report marked as Resolved" });
-    onOpenChange(false);
+  const handleDocumentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Validate file type (PDF, Word, Image)
+      const validTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validTypes.includes(file.type)) {
+        toast({ title: 'Invalid File', description: 'Please upload PDF, Word document, or image file', variant: 'destructive' });
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: 'File Too Large', description: 'Maximum file size is 10MB', variant: 'destructive' });
+        return;
+      }
+      setResolutionDocument(file);
+    }
+  };
+
+  const uploadResolutionDocument = async (): Promise<string | null> => {
+    if (!resolutionDocument) return null;
+    const sb = getSupabase();
+    if (!sb) return null;
+    
+    const ext = resolutionDocument.name.split('.').pop() || 'bin';
+    const path = `resolution-docs/${report.report_id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    
+    try {
+      const { error } = await sb.storage.from('reports').upload(path, resolutionDocument, { cacheControl: '3600', upsert: true });
+      if (error) {
+        console.error('Upload error:', error);
+        return null;
+      }
+      const { data } = sb.storage.from('reports').getPublicUrl(path);
+      return data?.publicUrl || null;
+    } catch (err) {
+      console.error('Upload exception:', err);
+      return null;
+    }
+  };
+
+  const handleMarkResolved = async () => {
+    if (!resolutionDocument && !resolutionDocUrl) {
+      toast({ title: 'Document Required', description: 'Please upload a resolution document (PDF, Word, or Image)', variant: 'destructive' });
+      return;
+    }
+    if (!resolutionNote.trim()) {
+      toast({ title: 'Note Required', description: 'Please provide a resolution note describing the work done', variant: 'destructive' });
+      return;
+    }
+    
+    setUploadingDoc(true);
+    try {
+      let docUrl = resolutionDocUrl;
+      if (!docUrl && resolutionDocument) {
+        docUrl = await uploadResolutionDocument();
+        if (!docUrl) {
+          toast({ title: 'Upload Failed', description: 'Failed to upload document. Please try again.', variant: 'destructive' });
+          setUploadingDoc(false);
+          return;
+        }
+        setResolutionDocUrl(docUrl);
+      }
+      
+      // Determine document type
+      const getDocType = (url: string): 'pdf' | 'image' | 'document' => {
+        const lower = url.toLowerCase();
+        if (lower.includes('.pdf')) return 'pdf';
+        if (/\.(jpg|jpeg|png|gif|webp)$/.test(lower)) return 'image';
+        return 'document';
+      };
+      
+      // Create resolution document record
+      const newDoc = {
+        id: `doc-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        name: resolutionDocument?.name || 'Resolution Document',
+        url: docUrl,
+        type: getDocType(docUrl),
+        uploaded_at: new Date().toISOString(),
+        uploaded_by: user?.name || 'Unknown',
+      };
+      
+      // Get existing resolution documents or empty array
+      const existingDocs = report.resolution_documents || [];
+      const updatedDocs = [...existingDocs, newDoc];
+      
+      // Update Supabase with resolution documents and note
+      const sb = getSupabase();
+      if (sb) {
+        // Update reports table with resolution_documents and resolution_note
+        const { error: updateError } = await sb
+          .from('reports')
+          .update({
+            status: 'Resolved',
+            resolution_documents: updatedDocs,
+            resolution_note: resolutionNote,
+          })
+          .eq('id', report.report_id);
+        
+        if (updateError) {
+          console.error('Failed to update report with resolution documents:', updateError);
+          toast({ title: 'Error', description: 'Failed to save resolution data', variant: 'destructive' });
+          setUploadingDoc(false);
+          return;
+        }
+        
+        // Also insert into resolution_documents table if it exists
+        try {
+          await sb.from('resolution_documents').insert({
+            report_id: report.report_id,
+            name: newDoc.name,
+            url: newDoc.url,
+            type: newDoc.type,
+            uploaded_at: newDoc.uploaded_at,
+            uploaded_by: newDoc.uploaded_by,
+          });
+        } catch (e) {
+          console.warn('Could not insert into resolution_documents table:', e);
+        }
+      }
+      
+      // Add progress note with document reference
+      addProgressNote(report.report_id, `Resolution: ${resolutionNote}`, user?.name || 'Unknown');
+      
+      // Update local state
+      updateReportStatus(report.report_id, 'Resolved', user?.name || 'Unknown');
+      
+      toast({ title: 'Report Resolved', description: 'Report has been marked as resolved with documentation' });
+      setShowResolveDialog(false);
+      setResolutionDocument(null);
+      setResolutionNote('');
+      setResolutionDocUrl('');
+      onOpenChange(false);
+    } finally {
+      setUploadingDoc(false);
+    }
   };
 
   const handleReject = () => {
@@ -189,6 +348,30 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby="report-detail-description">
         <DialogHeader>
+          {/* DEADLINE PROMINENT DISPLAY */}
+          <div className="bg-gradient-to-r from-primary/10 to-primary/5 rounded-lg p-3 mb-3 border border-primary/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Timer className="w-5 h-5 text-primary" />
+                <span className="font-semibold text-primary">Deadline</span>
+              </div>
+              <div className="text-right">
+                <div className={`text-lg font-bold ${isOverdueNow ? 'text-destructive animate-pulse' : 'text-foreground'}`}>
+                  {deadlineAt ? formatDate(deadlineAt) : '—'}
+                </div>
+                {isOverdueNow && (
+                  <Badge variant="outline" className="bg-destructive text-destructive-foreground animate-pulse">
+                    <AlertTriangle className="w-3 h-3 mr-1" />
+                    OVERDUE
+                  </Badge>
+                )}
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-muted-foreground">
+              Priority: <span className="font-medium">{report.priority}</span> • SLA: <span className="font-medium">{deadlineDays} days</span>
+            </div>
+          </div>
+          
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <DialogTitle className="font-mono text-xl">{report.report_id}</DialogTitle>
             <div className="flex gap-2">
@@ -239,14 +422,15 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                   </a>
                 )}
               </div>
+              {/* HIDE REPORTER NAME - Only show anonymous status */}
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span className="text-muted-foreground">Reporter:</span>
-                <span>{report.reporter.anonymous ? 'Anonymous' : 'Citizen'}</span>
+                <span className="text-muted-foreground italic">Anonymous Citizen</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-muted-foreground" />
-                <span>{report.reporter.anonymous ? 'N/A' : 'On file'}</span>
+                <span className="text-muted-foreground italic">Contact details hidden</span>
               </div>
               <div className="flex items-center gap-2">
                 <Tag className="w-4 h-4 text-muted-foreground" />
@@ -268,7 +452,34 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 <Sparkles className="w-4 h-4 text-primary" />
                 <span className="font-medium text-primary">AI Summary</span>
               </div>
-              <p className="text-sm">{report.summary}</p>
+              <p className="text-sm">{report.summary || 'No summary available'}</p>
+              
+              {/* Show detected category from summarizer.json */}
+              {(() => {
+                try {
+                  const categoryMatch = findMatchingCategory(report.description);
+                  if (categoryMatch && categoryMatch.score > 0) {
+                    return (
+                      <div className="mt-3 pt-3 border-t border-primary/20">
+                        <div className="flex items-center gap-2 text-xs">
+                          <Tag className="w-3 h-3" />
+                          <span className="text-muted-foreground">Detected:</span>
+                          <Badge variant="secondary" className="text-xs">{categoryMatch.category}</Badge>
+                          <Badge variant="outline" className="text-xs">Priority: {getPriorityFromDescription(report.description)}</Badge>
+                        </div>
+                        {categoryMatch.keywords && categoryMatch.keywords.length > 0 && (
+                          <div className="mt-2 text-xs text-muted-foreground">
+                            Keywords: {categoryMatch.keywords.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+                } catch (err) {
+                  console.error('Category detection error:', err);
+                }
+                return null;
+              })()}
             </div>
 
             <div className="rounded-lg p-4 border bg-muted/50">
@@ -423,45 +634,65 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             {/* Actions */}
             <div className="space-y-3">
               <h4 className="font-semibold">Actions</h4>
-              {isOverdueNow && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive-light p-3 text-sm text-destructive">
-                  This report is overdue (SLA {deadlineDays} days). Officer actions are still allowed.
+              
+              {/* STRICT LOGIC: Show warning if not assigned */}
+              {!isAssignedToCurrentUser && !isAdmin && (
+                <div className="rounded-lg border border-warning/30 bg-warning-light p-3 text-sm text-warning">
+                  <AlertTriangle className="w-4 h-4 inline mr-2" />
+                  You are not assigned to this report. Contact admin for assignment.
                 </div>
               )}
+              
+              {isOverdueNow && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive-light p-3 text-sm text-destructive">
+                  This report is overdue (SLA {deadlineDays} days). Please resolve immediately.
+                </div>
+              )}
+              
+              {/* Mark In Progress Button */}
               <Button 
-                className="w-full justify-start" 
-                onClick={handleMarkInProgress}
-                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'In Progress'}
+                variant="outline" 
+                className="w-full justify-start border-blue-500 text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950"
+                onClick={() => {
+                  updateReportStatus(report.report_id, 'In Progress', user?.name || 'Unknown');
+                  toast({ title: 'Status Updated', description: 'Report marked as In Progress' });
+                }}
+                disabled={!officerCanAct || report.status !== 'Pending'}
               >
                 <PlayCircle className="w-4 h-4 mr-2" />
                 Mark In Progress
               </Button>
+              
+              {/* RESOLVE: Requires document upload */}
               <Button 
                 className="w-full justify-start bg-success hover:bg-success/90" 
-                onClick={handleMarkResolved}
-                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'Resolved'}
+                onClick={() => setShowResolveDialog(true)}
+                disabled={!officerCanAct || report.status === 'Resolved'}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Mark Resolved
               </Button>
+              
               <Button 
                 variant="outline" 
                 className="w-full justify-start border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                 onClick={() => setShowRejectionDialog(true)}
-                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'Rejected'}
+                disabled={!officerCanAct || report.status === 'Rejected'}
               >
                 <XCircle className="w-4 h-4 mr-2" />
                 Mark Rejected
               </Button>
+              
               <Button 
                 variant="secondary" 
                 className="w-full justify-start"
                 onClick={() => setShowProgressDialog(true)}
-                disabled={!officerCanAct || officerLockedByOverdue}
+                disabled={!officerCanAct}
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Add Progress Note
               </Button>
+              
               {isAdmin && report.status === 'Resolved' && (
                 <Button
                   variant="destructive"
@@ -527,6 +758,68 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setShowProgressDialog(false)}>Cancel</Button>
                 <Button onClick={handleAddProgress}>Save Note</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Resolve Dialog with Document Upload */}
+        {showResolveDialog && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+            <div className="bg-card rounded-lg p-6 max-w-lg w-full animate-scale-in">
+              <h3 className="font-semibold text-lg mb-2">Mark Report as Resolved</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                You must upload a document proving the work has been completed.
+              </p>
+              
+              <div className="space-y-4">
+                {/* Document Upload */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2">
+                    <Upload className="w-4 h-4" />
+                    Resolution Document (Required)
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Accepted formats: PDF, Word (.doc/.docx), Images (jpg, png, gif, webp). Max 10MB.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
+                    onChange={handleDocumentChange}
+                    className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+                  />
+                  {resolutionDocument && (
+                    <div className="flex items-center gap-2 p-2 bg-success-light rounded-lg text-sm text-success">
+                      <File className="w-4 h-4" />
+                      <span>{resolutionDocument.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        ({(resolutionDocument.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Resolution Note */}
+                <div className="space-y-2">
+                  <Label>Resolution Note (Required)</Label>
+                  <Textarea
+                    value={resolutionNote}
+                    onChange={(e) => setResolutionNote(e.target.value)}
+                    placeholder="Describe the work completed and how the issue was resolved..."
+                    rows={4}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex gap-2 justify-end mt-6">
+                <Button variant="outline" onClick={() => setShowResolveDialog(false)}>Cancel</Button>
+                <Button 
+                  className="bg-success hover:bg-success/90"
+                  onClick={handleMarkResolved}
+                  disabled={!resolutionDocument || !resolutionNote.trim() || uploadingDoc}
+                >
+                  {uploadingDoc ? 'Uploading...' : 'Confirm Resolution'}
+                </Button>
               </div>
             </div>
           </div>
