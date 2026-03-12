@@ -26,8 +26,6 @@ interface SidebarProps {
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Reports', icon: FileText },
-  { id: 'map', label: 'Map', icon: Map, badge: 'Beta' },
-  { id: 'heatmap', label: 'Heatmap', icon: Flame, badge: 'Beta' },
   { id: 'officers', label: 'Officers', icon: Users, adminOnly: true },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'departments', label: 'Departments', icon: Building2, adminOnly: true },
@@ -47,7 +45,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
 
   const filteredNavItems = isAdmin
     ? navItems
-    : navItems.filter(item => ['dashboard', 'reports', 'map'].includes(item.id));
+    : navItems.filter(item => ['dashboard', 'reports'].includes(item.id));
 
   return (
     <>

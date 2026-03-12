@@ -209,7 +209,8 @@ export const categories = [
   'Drainage Block',
   'Tree Falling Risk',
   'Sewage Overflow',
-  'Park Maintenance'
+  'Park Maintenance',
+  'Other'
 ];
 
 export const govEmailDomains = [

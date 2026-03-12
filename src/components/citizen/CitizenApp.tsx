@@ -12,6 +12,7 @@ import { categories } from '@/lib/data';
 import { classify, buildLocationLine, guidanceSteps, complaintSubject, complaintBody, rtiBody, followUpEmail, escalationEmail, IssueDetails } from '@/lib/civic_client';
 import { geocodeAddress } from '@/lib/geocoding';
 import { useReports } from '@/contexts/ReportsContext';
+import { getSupabase, isSupabaseEnabled } from '@/lib/supabase';
 
 export function CitizenApp() {
   const { addReport } = useReports();
@@ -64,6 +65,72 @@ export function CitizenApp() {
   }, [catOptions, issueType]);
 
   const [submitting, setSubmitting] = React.useState(false);
+  const [aiValidating, setAiValidating] = React.useState(false);
+  const [aiOk, setAiOk] = React.useState(true);
+  const [aiError, setAiError] = React.useState<string | null>(null);
+
+  const imageUrl = React.useMemo(() => {
+    // citizen-side currently doesn't support upload; future: pass Supabase public URL
+    return '';
+  }, []);
+
+  const validateTextWithAi = React.useCallback(async (inputText: string) => {
+    const text = String(inputText || '').trim();
+    if (!text) {
+      setAiOk(false);
+      setAiError('Description required');
+      return { ok: false, error: 'Description required' } as const;
+    }
+    if (!isSupabaseEnabled()) {
+      setAiOk(true);
+      setAiError(null);
+      return { ok: true } as const;
+    }
+    const sb = getSupabase();
+    if (!sb) {
+      setAiOk(true);
+      setAiError(null);
+      return { ok: true } as const;
+    }
+    setAiValidating(true);
+    try {
+      const res = await sb.functions.invoke('summarize', { body: { text, image_url: imageUrl } });
+      const data = (res as any)?.data as any;
+      const ok = Boolean(data?.ok);
+      const error = typeof data?.error === 'string' ? data.error : null;
+      const status = typeof data?.status === 'string' ? data.status : null;
+      const score = typeof data?.report_score === 'number' ? data.report_score : null;
+      const scoreOk = typeof score === 'number' ? score >= 90 : true;
+      const accepted = ok && (!status || status === 'accepted') && scoreOk;
+      if (!accepted) {
+        const msg = error || (!scoreOk ? 'Report score must be 90+ to submit.' : (status === 'flagged' ? 'Report flagged as suspicious. Please add more details.' : 'Invalid complaint text.'));
+        setAiOk(false);
+        setAiError(msg);
+        return { ok: false, error: msg } as const;
+      }
+      setAiOk(true);
+      setAiError(null);
+      return { ok: true } as const;
+    } catch {
+      setAiOk(true);
+      setAiError(null);
+      return { ok: true } as const;
+    } finally {
+      setAiValidating(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    let alive = true;
+    const t = setTimeout(() => {
+      if (!alive) return;
+      validateTextWithAi(description);
+    }, 450);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [description, validateTextWithAi]);
 
   const handleCopy = async (text: string) => {
     try {
@@ -79,6 +146,11 @@ export function CitizenApp() {
     }
     if (!description.trim()) {
       toast({ title: 'Description required', description: 'Please describe the issue.', variant: 'destructive' });
+      return;
+    }
+    const v = await validateTextWithAi(description);
+    if (!v.ok) {
+      toast({ title: 'Cannot submit', description: v.error || 'Invalid complaint text.', variant: 'destructive' });
       return;
     }
     setSubmitting(true);
@@ -207,8 +279,8 @@ export function CitizenApp() {
             )}
           </div>
           <div className="flex gap-3">
-            <Button onClick={handleSubmitReport} disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit report to portal'}
+            <Button onClick={handleSubmitReport} disabled={submitting || aiValidating || !aiOk}>
+              {submitting ? 'Submitting...' : (aiValidating ? 'Checking...' : 'Submit report to portal')}
             </Button>
             <Button variant="outline" onClick={() => handleCopy(body)}>Copy complaint text</Button>
           </div>

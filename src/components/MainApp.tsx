@@ -6,8 +6,6 @@ import { Sidebar } from './layout/Sidebar';
 import { TopHeader } from './layout/TopHeader';
 import { DashboardPage } from './pages/DashboardPage';
 import { ReportsPage } from './pages/ReportsPage';
-import { MapPage } from './pages/MapPage';
-import { HeatmapPage } from './pages/HeatmapPage';
 import { UsersPage } from './pages/UsersPage';
 import { DepartmentsPage } from './pages/DepartmentsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -99,6 +97,20 @@ export function MainApp() {
     setCurrentPage('reports');
   };
 
+  const handleDashboardFilterChange = (next: string) => {
+    setDashboardFilter(next);
+    setAssignedOnlyUserId(null);
+    setSearchQuery('');
+    if (next === 'all') {
+      setReportsPresetFilters({ status: [], priority: [] });
+    } else if (next === 'Urgent') {
+      setReportsPresetFilters({ priority: ['Urgent'], status: [] });
+    } else {
+      setReportsPresetFilters({ status: [next], priority: [] });
+    }
+    setCurrentPage('reports');
+  };
+
   const handleNavigateToReportsFiltered = (filter: 'all' | 'Pending' | 'In Progress' | 'Resolved' | 'Urgent') => {
     setAssignedOnlyUserId(null);
     setSearchQuery('');
@@ -118,7 +130,7 @@ export function MainApp() {
         return (
           <DashboardPage 
             filter={dashboardFilter}
-            onFilterChange={setDashboardFilter}
+            onFilterChange={handleDashboardFilterChange}
             onOpenReport={handleOpenReport}
             onViewAllAssigned={handleViewAllAssigned}
             onNavigateToReportsFiltered={handleNavigateToReportsFiltered}
@@ -133,10 +145,6 @@ export function MainApp() {
             presetFilters={reportsPresetFilters}
           />
         );
-      case 'map':
-        return <MapPage onOpenReport={handleOpenReport} />;
-      case 'heatmap':
-        return <HeatmapPage />;
       case 'users':
         return isAdmin ? <UsersPage /> : null;
       case 'departments':
@@ -151,7 +159,7 @@ export function MainApp() {
         return (
           <DashboardPage 
             filter={dashboardFilter}
-            onFilterChange={setDashboardFilter}
+            onFilterChange={handleDashboardFilterChange}
             onOpenReport={handleOpenReport}
             onViewAllAssigned={handleViewAllAssigned}
             onNavigateToReportsFiltered={handleNavigateToReportsFiltered}

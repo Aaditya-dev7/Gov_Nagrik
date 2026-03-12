@@ -25,7 +25,8 @@ import {
   XCircle,
   FileText,
   X,
-  Trash2
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
 import { correctDescription, analyzeImageDescription } from '@/lib/ai';
 import { reverseGeocode, isCoordinateInIndia } from '@/lib/geocoding';
@@ -95,6 +96,31 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     isAdmin ||
     (user?.id && report.assigned_officer_id && report.assigned_officer_id === user.id)
   );
+
+  const getDeadlineDays = (priority: string) => {
+    switch (priority) {
+      case 'Low': return 15;
+      case 'Medium': return 10;
+      case 'High': return 6;
+      case 'Urgent': return 3;
+      default: return 15;
+    }
+  };
+
+  const submittedMs = new Date(report.submitted_at).getTime();
+  const deadlineDays = getDeadlineDays(report.priority);
+  const deadlineMs = submittedMs + deadlineDays * 24 * 60 * 60 * 1000;
+  const isOverdueNow = !Number.isNaN(submittedMs) && Date.now() > deadlineMs && report.status !== 'Resolved' && report.status !== 'Rejected';
+  const officerLockedByOverdue = false;
+
+  const deadlineAt = (() => {
+    if (report.deadline) {
+      const ms = new Date(report.deadline).getTime();
+      if (!Number.isNaN(ms)) return new Date(ms).toISOString();
+    }
+    if (!Number.isNaN(deadlineMs)) return new Date(deadlineMs).toISOString();
+    return null;
+  })();
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -191,17 +217,36 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 <span>{formatDate(report.submitted_at)}</span>
               </div>
               <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Deadline:</span>
+                <span>{deadlineAt ? formatDate(deadlineAt) : '—'}</span>
+                {isOverdueNow && (
+                  <Badge variant="outline" className="bg-destructive-light text-destructive border-destructive/30">Overdue</Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-muted-foreground" />
                 <span>{report.location_text}</span>
+                {report.lat && report.lng && (
+                  <a
+                    href={`https://www.google.com/maps?q=${report.lat},${report.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Map
+                  </a>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <User className="w-4 h-4 text-muted-foreground" />
                 <span className="text-muted-foreground">Reporter:</span>
-                <span>{report.reporter.name}</span>
+                <span>{report.reporter.anonymous ? 'Anonymous' : 'Citizen'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Phone className="w-4 h-4 text-muted-foreground" />
-                <span>{report.reporter.phone || 'Anonymous'}</span>
+                <span>{report.reporter.anonymous ? 'N/A' : 'On file'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Tag className="w-4 h-4 text-muted-foreground" />
@@ -378,10 +423,15 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             {/* Actions */}
             <div className="space-y-3">
               <h4 className="font-semibold">Actions</h4>
+              {isOverdueNow && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive-light p-3 text-sm text-destructive">
+                  This report is overdue (SLA {deadlineDays} days). Officer actions are still allowed.
+                </div>
+              )}
               <Button 
                 className="w-full justify-start" 
                 onClick={handleMarkInProgress}
-                disabled={!officerCanAct || report.status === 'In Progress'}
+                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'In Progress'}
               >
                 <PlayCircle className="w-4 h-4 mr-2" />
                 Mark In Progress
@@ -389,7 +439,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
               <Button 
                 className="w-full justify-start bg-success hover:bg-success/90" 
                 onClick={handleMarkResolved}
-                disabled={!officerCanAct || report.status === 'Resolved'}
+                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'Resolved'}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Mark Resolved
@@ -398,7 +448,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 variant="outline" 
                 className="w-full justify-start border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
                 onClick={() => setShowRejectionDialog(true)}
-                disabled={!officerCanAct || report.status === 'Rejected'}
+                disabled={!officerCanAct || officerLockedByOverdue || report.status === 'Rejected'}
               >
                 <XCircle className="w-4 h-4 mr-2" />
                 Mark Rejected
@@ -407,7 +457,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 variant="secondary" 
                 className="w-full justify-start"
                 onClick={() => setShowProgressDialog(true)}
-                disabled={!officerCanAct}
+                disabled={!officerCanAct || officerLockedByOverdue}
               >
                 <FileText className="w-4 h-4 mr-2" />
                 Add Progress Note

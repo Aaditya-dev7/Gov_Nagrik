@@ -138,10 +138,6 @@ export function OfficersPage({ onNavigateToReportsFiltered }: OfficersPageProps)
                   <div className="font-medium">{u.department}</div>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">Online since {new Date((u as any).since).toLocaleString()}</div>
-                <div className="mt-3 text-sm">
-                  <div className="text-muted-foreground">Assigned Reports</div>
-                  <div className="font-medium">{u.assignedCount}</div>
-                </div>
               </div>
             ))}
           </div>

@@ -32,11 +32,15 @@ export interface TimelineItem {
 export interface Report {
   report_id: string;
   category: string;
+  other_category?: string;
   description: string;
   summary: string;
+  report_score?: number;
   priority: 'Low' | 'Medium' | 'High' | 'Urgent';
   status: 'Pending' | 'In Progress' | 'Resolved' | 'Rejected';
   submitted_at: string;
+  deadline?: string;
+  overdue_at?: string;
   location_text: string;
   lat: number;
   lng: number;
@@ -54,6 +58,9 @@ export interface Notification {
   timestamp: string;
   read: boolean;
   report_id: string;
+  recipient_user_id?: string | null;
+  recipient_role?: 'citizen' | 'officer' | 'admin' | null;
+  type?: 'status' | 'overdue' | 'assignment' | 'progress_note' | 'system' | string;
 }
 
 export interface AppState {
