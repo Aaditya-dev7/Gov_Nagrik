@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User } from '@/lib/types';
-import { mockUsers, isValidGovEmail } from '@/lib/data';
+import { isValidGovEmail } from '@/lib/data';
+import { getSupabase } from '@/lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -21,53 +22,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const addActiveSession = (u: User) => {
-    try {
-      const key = 'nagrikGPT_active_sessions';
-      const raw = localStorage.getItem(key);
-      const list: (User & { since: string })[] = raw ? JSON.parse(raw) : [];
-      const since = new Date().toISOString();
-      const without = list.filter(s => s.id !== u.id);
-      without.push({ ...u, since });
-      localStorage.setItem(key, JSON.stringify(without));
-    } catch {}
-  };
+  const mapProfileToUser = (authUser: any, profile: any): User => {
+    const email = String(authUser?.email || '');
+    const roleRaw = String(profile?.role || '').toLowerCase();
+    const role: User['role'] = roleRaw === 'admin'
+      ? 'Super Admin'
+      : roleRaw === 'officer'
+        ? 'Field Officer'
+        : 'Viewer';
 
-  const removeActiveSession = (userId: string) => {
-    try {
-      const key = 'nagrikGPT_active_sessions';
-      const raw = localStorage.getItem(key);
-      if (!raw) return;
-      const list: (User & { since: string })[] = JSON.parse(raw);
-      const without = list.filter(s => s.id !== userId);
-      localStorage.setItem(key, JSON.stringify(without));
-    } catch {}
+    const dept = (roleRaw === 'admin')
+      ? (profile?.department || 'All Departments')
+      : (profile?.department || 'General');
+
+    return {
+      id: String(authUser?.id || ''),
+      name: String(profile?.full_name || email.split('@')[0] || 'User'),
+      email,
+      role,
+      department: String(dept),
+      status: 'Active',
+    } as User;
   };
 
   useEffect(() => {
-    // Check for saved session
-    const savedUser = localStorage.getItem('nagrikGPT_user');
-    if (savedUser) {
-      try {
-        const parsed = JSON.parse(savedUser);
-        const foundUser = mockUsers.find(u => u.id === parsed.id);
-        if (foundUser) {
-          setUser(foundUser);
-        } else {
-          const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-          if (dynRaw) {
-            try {
-              const dynUsers: User[] = JSON.parse(dynRaw);
-              const dynFound = dynUsers.find(u => u.id === parsed.id);
-              if (dynFound) setUser(dynFound);
-            } catch {}
-          }
-        }
-      } catch (e) {
-        localStorage.removeItem('nagrikGPT_user');
-      }
+    const sb = getSupabase();
+    if (!sb) {
+      setIsLoading(false);
+      setUser(null);
+      return;
     }
-    setIsLoading(false);
+
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const { data } = await sb.auth.getSession();
+        const au = data?.session?.user;
+        if (!au) {
+          if (!cancelled) setUser(null);
+          return;
+        }
+
+        const { data: prof, error: profErr } = await sb
+          .from('profiles')
+          .select('id, full_name, role, department')
+          .eq('id', au.id)
+          .maybeSingle();
+
+        if (profErr) throw profErr;
+        if (!cancelled) setUser(mapProfileToUser(au, prof));
+      } catch {
+        if (!cancelled) setUser(null);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+
+    load();
+
+    const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
+      try {
+        const au = session?.user;
+        if (!au) {
+          setUser(null);
+          return;
+        }
+        const { data: prof } = await sb
+          .from('profiles')
+          .select('id, full_name, role, department')
+          .eq('id', au.id)
+          .maybeSingle();
+        setUser(mapProfileToUser(au, prof));
+      } catch {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      try { sub?.subscription?.unsubscribe() } catch {}
+    };
   }, []);
 
   const login = async (
@@ -76,303 +111,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remember: boolean,
     rolePref?: 'admin' | 'officer'
   ): Promise<{ success: boolean; message: string }> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Demo account
-    if (email.toLowerCase() === 'sneha.kulkarni@nagarpalika.gov.in' && password === 'sneha12345') {
-      const demoUser = mockUsers.find(u => u.id === 'user-4')!;
-      setUser(demoUser);
-      addActiveSession(demoUser);
-      if (remember) {
-        localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: demoUser.id }));
-      }
-      try { localStorage.setItem((demoUser.role === 'Department Admin' || demoUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-      return { success: true, message: `Welcome back, ${demoUser.name}!` };
-    }
-
     // Validate government email
     if (!isValidGovEmail(email)) {
       return { success: false, message: 'Please use an official government email address' };
     }
 
-    // If a password was set via SetPasswordModal, enforce it
-    const savedPw = localStorage.getItem(`nagrikGPT_pw_${email.toLowerCase()}`);
-    if (savedPw) {
-      if (password !== savedPw) {
-        return { success: false, message: 'Incorrect password. Please use the password you set via the email link.' };
-      }
-
-      // Try existing mock user first
-      const existing = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-      if (existing) {
-        // Check access request mapping to allow promotion to Admin
-        let mappedRole: User['role'] | null = null;
-        let mappedDept: string | null = null;
-        const reqListRaw = localStorage.getItem('nagrikGPT_access_requests');
-        if (reqListRaw) {
-          try {
-            const reqs = JSON.parse(reqListRaw) as Array<{ officialEmail?: string; email?: string; role?: 'admin' | 'officer'; department?: string }>;
-            const req = reqs.slice().reverse().find(r => (r.officialEmail || r.email || '').toLowerCase() === email.toLowerCase());
-            if (req) {
-              mappedRole = req.role === 'admin' ? 'Department Admin' : req.role === 'officer' ? 'Field Officer' : null;
-              mappedDept = req.department || null;
-            }
-          } catch {}
-        }
-
-        const shouldPromoteToAdmin = mappedRole === 'Department Admin' && existing.role !== 'Department Admin' && existing.role !== 'Super Admin';
-        if (shouldPromoteToAdmin) {
-          // Create or update a dynamic user entry for this email and sign in with the promoted role
-          let dynUsers: User[] = [];
-          const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-          if (dynRaw) {
-            try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
-          }
-          let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-          const selectedLoginDept = ((): string | null => { try { return localStorage.getItem('nagrikGPT_login_dept') || null; } catch { return null; } })();
-          const targetDept = ((): string => {
-            if (mappedRole === 'Department Admin') {
-              if (mappedDept && mappedDept.trim()) return mappedDept;
-              if (selectedLoginDept && selectedLoginDept.trim()) return selectedLoginDept;
-              return 'All Departments';
-            }
-            return (mappedDept || selectedLoginDept || existing.department || 'General') as string;
-          })();
-          if (!dynUser) {
-            dynUser = {
-              id: `dyn-${Date.now()}`,
-              name: existing.name,
-              email: existing.email,
-              role: 'Department Admin',
-              department: targetDept,
-              status: 'Active',
-            };
-            dynUsers.push(dynUser);
-            localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(dynUsers));
-          } else {
-            dynUser = { ...dynUser, role: 'Department Admin', department: targetDept };
-            const without = dynUsers.filter(u => u.id !== dynUser!.id);
-            without.push(dynUser);
-            localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(without));
-          }
-          setUser(dynUser);
-          addActiveSession(dynUser);
-          if (remember) {
-            localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: dynUser.id }));
-          }
-          try { localStorage.setItem((dynUser.role === 'Department Admin' || dynUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-          return { success: true, message: `Welcome, ${dynUser.name}!` };
-        }
-
-        // No promotion needed; continue with mock user
-        setUser(existing);
-        addActiveSession(existing);
-        if (remember) {
-          localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: existing.id }));
-        }
-        try { localStorage.setItem((existing.role === 'Department Admin' || existing.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-        return { success: true, message: `Welcome back, ${existing.name}!` };
-      }
-
-      // Load or create dynamic user
-      let dynUsers: User[] = [];
-      const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-      if (dynRaw) {
-        try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
-      }
-      let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-
-      // Map role/department from access request, if any
-      const reqListRaw = localStorage.getItem('nagrikGPT_access_requests');
-      let mappedRole: User['role'] = (rolePref === 'admin') ? 'Department Admin' : (rolePref === 'officer') ? 'Field Officer' : 'Viewer';
-      let mappedDept = ((): string => { try { return (rolePref === 'admin' ? (localStorage.getItem('nagrikGPT_login_dept') || '') : '') || 'General'; } catch { return 'General'; } })();
-      if (reqListRaw) {
-        try {
-          const reqs = JSON.parse(reqListRaw) as Array<{ officialEmail?: string; email?: string; role?: 'admin' | 'officer'; department?: string }>;
-          const req = reqs.slice().reverse().find(r => (r.officialEmail || r.email || '').toLowerCase() === email.toLowerCase());
-          if (req) {
-            if (req.role === 'admin') mappedRole = 'Department Admin';
-            else if (req.role === 'officer') mappedRole = 'Field Officer';
-            if (req.department) mappedDept = req.department;
-          }
-        } catch {}
-      }
-      if (mappedRole === 'Department Admin' && (!mappedDept || mappedDept === 'General')) {
-        mappedDept = 'All Departments';
-      }
-      if (!dynUser) {
-        dynUser = {
-          id: `dyn-${Date.now()}`,
-          name: email.split('@')[0],
-          email,
-          role: mappedRole,
-          department: mappedDept,
-          status: 'Active',
-        };
-        dynUsers.push(dynUser);
-        localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(dynUsers));
-      } else {
-        // Upgrade existing dynamic user based on latest access request mapping
-        let nextRole = dynUser.role;
-        if (mappedRole === 'Department Admin' && dynUser.role !== 'Department Admin') {
-          // Always promote to admin if access request grants it
-          nextRole = 'Department Admin';
-        } else if (mappedRole === 'Field Officer' && dynUser.role === 'Viewer') {
-          // Promote viewer to officer if applicable
-          nextRole = 'Field Officer';
-        }
-
-        const nextDepartment = ((): string => {
-          // Prefer mapped department if current is General or if role is newly promoted to Admin
-          if (!mappedDept) return dynUser.department;
-          if (dynUser.department === 'General') return mappedDept;
-          if (nextRole === 'Department Admin' && dynUser.department !== mappedDept) return mappedDept;
-          return dynUser.department;
-        })();
-
-        const upgraded: User = { ...dynUser, role: nextRole, department: nextDepartment };
-        dynUser = upgraded;
-        const without = dynUsers.filter(u => u.id !== dynUser.id);
-        without.push(dynUser);
-        localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(without));
-      }
-      setUser(dynUser);
-      addActiveSession(dynUser);
-      if (remember) {
-        localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: dynUser.id }));
-      }
-      try { localStorage.setItem((dynUser.role === 'Department Admin' || dynUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-      return { success: true, message: `Welcome, ${dynUser.name}!` };
+    const sb = getSupabase();
+    if (!sb) {
+      return { success: false, message: 'Supabase is not configured' };
     }
 
-    // No saved password – allow login if an access request exists for this email
     try {
-      const reqListRaw = localStorage.getItem('nagrikGPT_access_requests');
-      if (reqListRaw) {
-        const reqs = JSON.parse(reqListRaw) as Array<{ officialEmail?: string; email?: string; role?: 'admin' | 'officer'; department?: string }>;
-        const req = reqs.slice().reverse().find(r => (r.officialEmail || r.email || '').toLowerCase() === email.toLowerCase());
-        if (req) {
-          let dynUsers: User[] = [];
-          const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-          if (dynRaw) {
-            try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
-          }
-          let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-          const mappedRole: User['role'] = req.role === 'admin' ? 'Department Admin' : req.role === 'officer' ? 'Field Officer' : 'Viewer';
-          let mappedDept = req.department || ((): string => { try { return localStorage.getItem('nagrikGPT_login_dept') || 'General'; } catch { return 'General'; } })();
-          if (mappedRole === 'Department Admin' && (!mappedDept || mappedDept === 'General')) {
-            mappedDept = 'All Departments';
-          }
-          if (!dynUser) {
-            dynUser = {
-              id: `dyn-${Date.now()}`,
-              name: email.split('@')[0],
-              email,
-              role: mappedRole,
-              department: mappedDept,
-              status: 'Active',
-            };
-            dynUsers.push(dynUser);
-            localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(dynUsers));
-          } else {
-            // Upgrade existing dynamic user if needed
-            const nextRole = mappedRole === 'Department Admin' ? 'Department Admin' : (dynUser.role === 'Viewer' ? mappedRole : dynUser.role);
-            const nextDepartment = dynUser.department === 'General' || nextRole === 'Department Admin' ? mappedDept : dynUser.department;
-            dynUser = { ...dynUser, role: nextRole, department: nextDepartment };
-            const without = dynUsers.filter(u => u.id !== dynUser.id);
-            without.push(dynUser);
-            localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(without));
-          }
-          setUser(dynUser);
-          addActiveSession(dynUser);
-          if (remember) {
-            localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: dynUser.id }));
-          }
-          try { localStorage.setItem((dynUser.role === 'Department Admin' || dynUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-          return { success: true, message: `Welcome, ${dynUser.name}!` };
-        }
-      }
-    } catch {}
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-    // Check mock users
-    const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (foundUser) {
-      // Check access request mapping to allow promotion to Admin
-      let mappedRole: User['role'] | null = null;
-      let mappedDept: string | null = null;
-      const reqListRaw = localStorage.getItem('nagrikGPT_access_requests');
-      if (reqListRaw) {
-        try {
-          const reqs = JSON.parse(reqListRaw) as Array<{ officialEmail?: string; email?: string; role?: 'admin' | 'officer'; department?: string }>;
-          const req = reqs.slice().reverse().find(r => (r.officialEmail || r.email || '').toLowerCase() === email.toLowerCase());
-          if (req) {
-            mappedRole = req.role === 'admin' ? 'Department Admin' : req.role === 'officer' ? 'Field Officer' : null;
-            mappedDept = req.department || null;
-          }
-        } catch {}
+      if (error) {
+        return { success: false, message: error.message || 'Invalid credentials' };
       }
 
-      const shouldPromoteToAdmin = mappedRole === 'Department Admin' && foundUser.role !== 'Department Admin' && foundUser.role !== 'Super Admin';
-      if (shouldPromoteToAdmin) {
-        // Create or update a dynamic user entry for this email and sign in with the promoted role
-        let dynUsers: User[] = [];
-        const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-        if (dynRaw) {
-          try { dynUsers = JSON.parse(dynRaw); } catch { dynUsers = []; }
-        }
-        let dynUser = dynUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-        const selectedLoginDept = ((): string | null => { try { return localStorage.getItem('nagrikGPT_login_dept') || null; } catch { return null; } })();
-        const targetDept = ((): string => {
-          if (mappedRole === 'Department Admin') {
-            if (mappedDept && mappedDept.trim()) return mappedDept;
-            if (selectedLoginDept && selectedLoginDept.trim()) return selectedLoginDept;
-            return 'All Departments';
-          }
-          return (mappedDept || selectedLoginDept || foundUser.department || 'General') as string;
-        })();
-        if (!dynUser) {
-          dynUser = {
-            id: `dyn-${Date.now()}`,
-            name: foundUser.name,
-            email: foundUser.email,
-            role: 'Department Admin',
-            department: targetDept,
-            status: 'Active',
-          };
-          dynUsers.push(dynUser);
-          localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(dynUsers));
-        } else {
-          dynUser = { ...dynUser, role: 'Department Admin', department: targetDept };
-          const without = dynUsers.filter(u => u.id !== dynUser!.id);
-          without.push(dynUser);
-          localStorage.setItem('nagrikGPT_dynusers', JSON.stringify(without));
-        }
-        setUser(dynUser);
-        addActiveSession(dynUser);
-        if (remember) {
-          localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: dynUser.id }));
-        }
-        try { localStorage.setItem((dynUser.role === 'Department Admin' || dynUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-        return { success: true, message: `Welcome, ${dynUser.name}!` };
+      const au = data?.user;
+      if (!au) {
+        return { success: false, message: 'Login failed' };
       }
 
-      setUser(foundUser);
-      addActiveSession(foundUser);
-      if (remember) {
-        localStorage.setItem('nagrikGPT_user', JSON.stringify({ id: foundUser.id }));
+      const { data: prof, error: profErr } = await sb
+        .from('profiles')
+        .select('id, full_name, role, department')
+        .eq('id', au.id)
+        .maybeSingle();
+
+      if (profErr) {
+        return { success: false, message: profErr.message || 'Failed to load profile' };
       }
-      try { localStorage.setItem((foundUser.role === 'Department Admin' || foundUser.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
-      return { success: true, message: `Welcome back, ${foundUser.name}!` };
+
+      const mapped = mapProfileToUser(au, prof);
+      if (rolePref && ((rolePref === 'admin' && mapped.role !== 'Super Admin') || (rolePref === 'officer' && mapped.role !== 'Field Officer'))) {
+        await sb.auth.signOut();
+        setUser(null);
+        return { success: false, message: 'Your account does not have access for the selected role.' };
+      }
+
+      setUser(mapped);
+      try { localStorage.setItem((mapped.role === 'Department Admin' || mapped.role === 'Super Admin') ? 'admin:lastPage' : 'officer:lastPage', 'dashboard'); } catch {}
+
+      // Note: Supabase controls persistence. `remember` is kept for UI compatibility.
+      return { success: true, message: `Welcome back, ${mapped.name}!` };
+    } catch {
+      return { success: false, message: 'Login failed. Please try again.' };
     }
-
-    return { success: false, message: 'Invalid credentials. Please try again.' };
   };
 
   const logout = () => {
-    if (user?.id) removeActiveSession(user.id);
+    const sb = getSupabase();
+    try { sb?.auth.signOut(); } catch {}
     setUser(null);
-    localStorage.removeItem('nagrikGPT_user');
   };
 
   const isAdmin = user?.role === 'Super Admin' || user?.role === 'Department Admin';
