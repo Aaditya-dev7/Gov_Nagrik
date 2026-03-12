@@ -10,6 +10,7 @@ import { Mail, Lock, Eye, EyeOff, Shield, Zap, Globe, Loader2 } from 'lucide-rea
 import { AccessRequestModal } from './AccessRequestModal';
 import { SetPasswordModal } from './SetPasswordModal';
 import { mockUsers } from '@/lib/data';
+import { getSupabase } from '@/lib/supabase';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -40,6 +41,49 @@ export function LoginPage() {
       setPasswordEmail(paramEmail);
       setShowSetPasswordModal(true);
     }
+  }, []);
+
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+
+        // Supabase may also return tokens in the URL hash.
+        const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash;
+        const hashParams = new URLSearchParams(hash);
+        const access_token = hashParams.get('access_token');
+        const refresh_token = hashParams.get('refresh_token');
+        const type = hashParams.get('type');
+
+        // 1) PKCE flow: exchange `code` for a session.
+        if (code) {
+          const { error } = await sb.auth.exchangeCodeForSession(code);
+          if (error) return;
+          if (cancelled) return;
+          setPasswordEmail('');
+          setShowSetPasswordModal(true);
+          return;
+        }
+
+        // 2) Implicit flow: set session from `access_token` + `refresh_token`.
+        if (access_token && refresh_token && (type === 'recovery' || type === 'invite' || type === 'signup')) {
+          const { error } = await sb.auth.setSession({ access_token, refresh_token });
+          if (error) return;
+          if (cancelled) return;
+          setPasswordEmail('');
+          setShowSetPasswordModal(true);
+          return;
+        }
+      } catch {}
+    };
+
+    run();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {

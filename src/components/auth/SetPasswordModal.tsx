@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { getSupabase } from '@/lib/supabase';
 
 interface SetPasswordModalProps {
   open: boolean;
@@ -41,8 +42,25 @@ export function SetPasswordModal({ open, onOpenChange, defaultEmail }: SetPasswo
 
     setIsSubmitting(true);
     try {
-      localStorage.setItem(`nagrikGPT_pw_${emailTrimmed}`, password);
-      toast({ title: 'Password set', description: 'You can now sign in with your email and new password.' });
+      const sb = getSupabase();
+      if (!sb) {
+        toast({ title: 'Supabase not configured', description: 'Please configure Supabase environment variables.', variant: 'destructive' });
+        return;
+      }
+
+      const { data: sessionData } = await sb.auth.getSession();
+      if (!sessionData?.session) {
+        toast({ title: 'Link required', description: 'Open the set-password link again (your session is missing).', variant: 'destructive' });
+        return;
+      }
+
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) {
+        toast({ title: 'Failed to set password', description: error.message || 'Please try again.', variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Password set', description: 'You can now sign in with your new password.' });
       onOpenChange(false);
     } finally {
       setIsSubmitting(false);
