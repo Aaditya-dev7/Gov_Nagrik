@@ -153,16 +153,18 @@ Deno.serve(async (req: Request) => {
     let user_id: string | null = null;
     let invited = false;
 
-    const { data: existing, error: existingErr } = await admin.auth.admin.getUserByEmail(official_email);
-    if (existingErr) {
+    // NOTE: Some Edge runtimes don't expose `getUserByEmail`, so use `listUsers`.
+    const { data: listData, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (listErr) {
       return new Response(
-        JSON.stringify({ ok: false, error: existingErr.message }),
+        JSON.stringify({ ok: false, error: listErr.message }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    if (existing?.user?.id) {
-      user_id = existing.user.id;
+    const existing = (listData?.users || []).find((u: any) => String(u?.email || '').toLowerCase() === official_email);
+    if (existing?.id) {
+      user_id = existing.id;
     } else {
       const { data: inviteData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(official_email, {
         ...(safeRedirectTo ? { redirectTo: safeRedirectTo } : {}),
