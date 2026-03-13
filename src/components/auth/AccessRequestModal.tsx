@@ -22,14 +22,7 @@ const ADMIN_EMAILS = [
   'nishant.jadhav_siot23@comp.sce.edu.in',
 ];
 
-// STRICT: Allowed official email domaiInvoke-RestMethod : The remote server returned an error: (401) Unauthorized.
-At line:1 char:1
-+ Invoke-RestMethod -Method POST -Uri $url -Headers $headers -ContentTy ...
-+ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-Re 
-   stMethod], WebException
-    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeRestM  
-   ethodCommandns
+// STRICT: Allowed official email domains
 const ALLOWED_EMAIL_DOMAINS = [
   '.gov.in',
   '.nic.in',
@@ -63,11 +56,36 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
   const [designation, setDesignation] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [purpose, setPurpose] = useState('');
-  const [role, setRole] = useState<'admin' | 'officer'>('officer');
+  const [role, setRole] = useState<'admin' | 'officer' | 'staff'>('officer');
+  const [reportsToOfficerId, setReportsToOfficerId] = useState<string>('');
+  const [officers, setOfficers] = useState<{id: string; name: string; department: string}[]>([]);
 
   // Validation state
   const [emailValid, setEmailValid] = useState<boolean | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+
+  // Load officers when department changes (for staff role)
+  React.useEffect(() => {
+    const loadOfficers = async () => {
+      if (role !== 'staff' || !department) {
+        setOfficers([]);
+        return;
+      }
+      const sb = getSupabase();
+      if (!sb) return;
+      try {
+        const { data } = await sb
+          .from('profiles')
+          .select('id, full_name, department')
+          .eq('role', 'officer')
+          .eq('department', department);
+        setOfficers(data || []);
+      } catch {
+        setOfficers([]);
+      }
+    };
+    loadOfficers();
+  }, [role, department]);
 
   // Validate official email domain
   const validateOfficialEmail = (email: string): { valid: boolean; error?: string } => {
@@ -204,55 +222,56 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       return;
     }
 
+    // Staff must select an officer
+    if (role === 'staff' && !reportsToOfficerId) {
+      toast({
+        title: 'Officer Required',
+        description: 'Please select the officer you report to.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     const toEmails = ADMIN_EMAILS.slice();
     const submitted_at = new Date().toISOString();
     const sb = getSupabase();
 
-    const saveLocal = () => {
-      try {
-        const key = 'nagrikGPT_access_requests';
-        const list = JSON.parse(localStorage.getItem(key) || '[]') as any[];
-        list.push({ 
-          fullName, 
-          officialEmail, 
-          department, 
-          designation, 
-          employeeId, 
-          purpose, 
-          role, 
-          submitted_at,
-          status: 'pending_verification',
-          verified: false,
-        });
-        localStorage.setItem(key, JSON.stringify(list));
-      } catch {}
-    };
-
     try {
-      // Always persist locally
-      saveLocal();
-      // Insert into Supabase if configured
-      if (sb) {
-        try {
-          await sb.from('access_requests').insert({
-            full_name: fullName,
-            official_email: officialEmail,
-            department,
-            designation,
-            employee_id: employeeId,
-            purpose,
-            role,
-            submitted_at,
-            status: 'pending_verification',
-            verified: false,
-          });
-        } catch {}
+      if (!sb) {
+        throw new Error('Supabase is not configured');
+      }
+
+      const redirect_to = `${window.location.origin}/login`;
+      const selectedOfficer = officers.find(o => o.id === reportsToOfficerId);
+      const { data, error } = await sb.functions.invoke('submit-access-request', {
+        body: {
+          full_name: fullName,
+          official_email: officialEmail,
+          department,
+          designation,
+          employee_id: employeeId,
+          purpose,
+          role,
+          submitted_at,
+          redirect_to,
+          admin_to_emails: toEmails,
+          reports_to_officer_id: role === 'staff' ? reportsToOfficerId : null,
+          reports_to_officer_name: role === 'staff' ? selectedOfficer?.name : null,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.ok) {
+        throw new Error(data?.error || 'Failed to submit request');
       }
 
       toast({
         title: 'Request Submitted',
-        description: `Your request has been recorded and is pending verification. You will receive an email once approved.`,
+        description: `Your request has been recorded. Check your email to set your password after verification.`,
       });
 
       setFullName('');
@@ -261,33 +280,18 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       setDesignation('');
       setEmployeeId('');
       setPurpose('');
+      setReportsToOfficerId('');
+      setOfficers([]);
       setCertified(false);
       setAgreedToTerms(false);
       setEmailValid(null);
       setEmailError(null);
       onOpenChange(false);
     } catch (err) {
-      // Email delivery failed – record locally to avoid data loss
-      saveLocal();
-      if (sb) {
-        try {
-          await sb.from('access_requests').insert({
-            full_name: fullName,
-            official_email: officialEmail,
-            department,
-            designation,
-            employee_id: employeeId,
-            purpose,
-            role,
-            submitted_at,
-            status: 'pending_verification',
-            verified: false,
-          });
-        } catch {}
-      }
       toast({
-        title: 'Request Saved',
-        description: 'Your request has been recorded. We will review it shortly.',
+        title: 'Request Failed',
+        description: (err as any)?.message || 'Failed to submit request. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
@@ -355,15 +359,19 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
 
           <div className="space-y-2">
             <Label htmlFor="role">Role <span className="text-destructive">*</span></Label>
-            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'officer')}>
+            <Select value={role} onValueChange={(v) => setRole(v as 'admin' | 'officer' | 'staff')}>
               <SelectTrigger>
                 <SelectValue placeholder="Select Role" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
                 <SelectItem value="officer">Officer</SelectItem>
+                <SelectItem value="staff">Staff</SelectItem>
               </SelectContent>
             </Select>
+            {role === 'staff' && (
+              <p className="text-xs text-muted-foreground">Staff can only view departmental reports and upload documents.</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -380,6 +388,29 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
               </SelectContent>
             </Select>
           </div>
+
+          {role === 'staff' && department && officers.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="reportsTo">Reports to Officer <span className="text-destructive">*</span></Label>
+              <Select value={reportsToOfficerId} onValueChange={setReportsToOfficerId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select your supervising officer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {officers.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>{o.name} ({o.department})</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Select the officer you report to for task assignments.</p>
+            </div>
+          )}
+
+          {role === 'staff' && department && officers.length === 0 && (
+            <div className="bg-warning-light border border-warning/30 rounded-lg p-3">
+              <p className="text-xs text-warning">No officers found in this department. Please contact admin.</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="designation">Designation <span className="text-destructive">*</span></Label>

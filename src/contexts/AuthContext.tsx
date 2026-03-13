@@ -29,7 +29,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? 'Super Admin'
       : roleRaw === 'officer'
         ? 'Field Officer'
-        : 'Viewer';
+        : roleRaw === 'staff'
+          ? 'Staff'
+          : 'Viewer';
 
     const dept = (roleRaw === 'admin')
       ? (profile?.department || 'All Departments')
@@ -42,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role,
       department: String(dept),
       status: 'Active',
+      reports_to_officer_id: profile?.reports_to_officer_id || null,
+      reports_to_officer_name: profile?.reports_to_officer_name || null,
     } as User;
   };
 

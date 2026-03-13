@@ -4,9 +4,12 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'Super Admin' | 'Department Admin' | 'Field Officer' | 'Viewer';
+  role: 'Super Admin' | 'Department Admin' | 'Field Officer' | 'Staff' | 'Viewer';
   department: string;
   status: 'Active' | 'Inactive';
+  // For staff: which officer they report to
+  reports_to_officer_id?: string | null;
+  reports_to_officer_name?: string | null;
 }
 
 export interface Department {
@@ -72,7 +75,7 @@ export interface Notification {
   read: boolean;
   report_id: string;
   recipient_user_id?: string | null;
-  recipient_role?: 'citizen' | 'officer' | 'admin' | null;
+  recipient_role?: 'citizen' | 'officer' | 'admin' | 'staff' | null;
   type?: 'status' | 'overdue' | 'assignment' | 'progress_note' | 'system' | string;
 }
 

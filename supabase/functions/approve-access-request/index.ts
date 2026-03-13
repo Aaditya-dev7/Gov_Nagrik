@@ -94,7 +94,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: reqRow, error: reqErr } = await admin
       .from('access_requests')
-      .select('id, full_name, official_email, department, designation, employee_id, purpose, role, status')
+      .select('id, full_name, official_email, department, designation, employee_id, purpose, role, status, reports_to_officer_id, reports_to_officer_name')
       .eq('id', rid)
       .maybeSingle();
 
@@ -152,33 +152,50 @@ Deno.serve(async (req: Request) => {
     }
 
     const requestedRole = String(reqRow.role || '').trim().toLowerCase();
-    if (requestedRole !== 'officer' && requestedRole !== 'admin') {
+    if (requestedRole !== 'officer' && requestedRole !== 'admin' && requestedRole !== 'staff') {
       return new Response(
         JSON.stringify({ ok: false, error: `Invalid role on request: ${requestedRole}` }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const { data: inviteData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      ...(safeRedirectTo ? { redirectTo: safeRedirectTo } : {}),
-      data: {
-        role: requestedRole,
-        full_name: reqRow.full_name,
-        department: reqRow.department,
-      },
-    });
+    let userId: string | null = null;
+    let invited = false;
 
-    if (inviteErr) {
+    const { data: existing, error: existingErr } = await admin.auth.admin.getUserByEmail(email);
+    if (existingErr) {
       return new Response(
-        JSON.stringify({ ok: false, error: inviteErr.message }),
+        JSON.stringify({ ok: false, error: existingErr.message }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
 
-    const userId = inviteData?.user?.id;
+    if (existing?.user?.id) {
+      userId = existing.user.id;
+    } else {
+      const { data: inviteData, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        ...(safeRedirectTo ? { redirectTo: safeRedirectTo } : {}),
+        data: {
+          role: requestedRole,
+          full_name: reqRow.full_name,
+          department: reqRow.department,
+        },
+      });
+
+      if (inviteErr) {
+        return new Response(
+          JSON.stringify({ ok: false, error: inviteErr.message }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+
+      userId = inviteData?.user?.id ?? null;
+      invited = true;
+    }
+
     if (!userId) {
       return new Response(
-        JSON.stringify({ ok: false, error: "Invite succeeded but no user id returned" }),
+        JSON.stringify({ ok: false, error: "Failed to resolve user id" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -190,6 +207,8 @@ Deno.serve(async (req: Request) => {
         full_name: reqRow.full_name,
         role: requestedRole,
         department: reqRow.department,
+        reports_to_officer_id: reqRow.reports_to_officer_id || null,
+        reports_to_officer_name: reqRow.reports_to_officer_name || null,
       });
 
     if (profErr) {
@@ -217,7 +236,7 @@ Deno.serve(async (req: Request) => {
     }
 
     return new Response(
-      JSON.stringify({ ok: true, invited: true, user_id: userId }),
+      JSON.stringify({ ok: true, invited, user_id: userId }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {

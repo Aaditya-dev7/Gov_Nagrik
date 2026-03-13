@@ -14,10 +14,12 @@ import { ProfilePage } from './pages/ProfilePage';
 import { cn } from '@/lib/utils';
 import { MobileBottomNav } from './layout/MobileBottomNav';
 import { OfficersPage } from './pages/OfficersPage';
+import { StaffDashboardPage } from './pages/StaffDashboardPage';
 import { t, useLang } from '@/lib/i18n';
 
 export function MainApp() {
   const { isAdmin, user } = useAuth();
+  const isStaff = user?.role === 'Staff';
   const { reports, isLoading } = useReports();
   const _lang = useLang();
   const [currentPage, setCurrentPage] = useState<string>('dashboard');
@@ -30,6 +32,12 @@ export function MainApp() {
 
   // Load last page for role and ensure correct landing page after login/role change
   useEffect(() => {
+    // Staff always lands on staff dashboard
+    if (isStaff) {
+      setCurrentPage('staff-dashboard');
+      return;
+    }
+
     try {
       const key = isAdmin ? 'admin:lastPage' : 'officer:lastPage';
       const saved = localStorage.getItem(key);
@@ -137,6 +145,11 @@ export function MainApp() {
   };
 
   const renderPage = () => {
+    // Staff has their own dashboard
+    if (isStaff || currentPage === 'staff-dashboard') {
+      return <StaffDashboardPage />;
+    }
+
     switch (currentPage) {
       case 'dashboard':
         return (
@@ -196,6 +209,10 @@ export function MainApp() {
           {isAdmin ? (
             <div className="rounded-md border border-primary/30 bg-primary/10 text-primary px-3 py-2 text-sm">
               {t('dashboard.admin_portal', 'Admin Portal')}
+            </div>
+          ) : isStaff ? (
+            <div className="rounded-md border border-blue-500/30 bg-blue-500/10 text-blue-500 px-3 py-2 text-sm">
+              {t('dashboard.staff_portal', 'Staff Portal')}
             </div>
           ) : (
             <div className="rounded-md border border-success/30 bg-success/10 text-success px-3 py-2 text-sm">
