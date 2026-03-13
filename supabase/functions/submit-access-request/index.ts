@@ -23,12 +23,12 @@ Deno.serve(async (req: Request) => {
       return new Response("ok", { headers: corsHeaders });
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_URL = Deno.env.get("PROJECT_URL") || Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!SUPABASE_URL) {
       return new Response(
-        JSON.stringify({ ok: false, error: "Missing SUPABASE_URL" }),
+        JSON.stringify({ ok: false, error: "Missing PROJECT_URL or SUPABASE_URL" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
