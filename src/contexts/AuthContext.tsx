@@ -60,9 +60,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = await sb.auth.getSession();
         const au = data?.session?.user;
         if (!au) {
+          let autoLoginDisabled = false;
+          try {
+            autoLoginDisabled = localStorage.getItem('nagrikGPT_autologin_disabled') === '1';
+          } catch {}
+
           const autoEmail = String((import.meta as any)?.env?.VITE_AUTOLOGIN_EMAIL || '').trim().toLowerCase();
           const autoPassword = String((import.meta as any)?.env?.VITE_AUTOLOGIN_PASSWORD || '').trim();
-          if (autoEmail && autoPassword) {
+          if (!autoLoginDisabled && autoEmail && autoPassword) {
             const { data: sdata, error: serr } = await sb.auth.signInWithPassword({
               email: autoEmail,
               password: autoPassword,
@@ -192,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     const sb = getSupabase();
     try { sb?.auth.signOut(); } catch {}
+    try { localStorage.setItem('nagrikGPT_autologin_disabled', '1'); } catch {}
     setUser(null);
   };
 
