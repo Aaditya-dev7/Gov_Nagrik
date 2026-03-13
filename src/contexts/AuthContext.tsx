@@ -19,46 +19,8 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const bypassEnabled = (() => {
-    const fromEnv = String((import.meta as any)?.env?.VITE_DISABLE_AUTH || '').toLowerCase() === 'true';
-    if (fromEnv) return true;
-    try {
-      return localStorage.getItem('nagrikGPT_disable_auth') === '1';
-    } catch {
-      return false;
-    }
-  })();
-
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(() => !bypassEnabled);
-
-  const getBypassUser = (): User => {
-    let pref: 'admin' | 'officer' = 'admin';
-    try {
-      const saved = localStorage.getItem('nagrikGPT_login_role');
-      if (saved === 'admin' || saved === 'officer') pref = saved;
-    } catch {}
-
-    if (pref === 'officer') {
-      return {
-        id: 'bypass-officer',
-        name: 'Officer (Bypass)',
-        email: 'officer@local.test',
-        role: 'Field Officer',
-        department: 'Roads',
-        status: 'Active',
-      } as User;
-    }
-
-    return {
-      id: 'bypass-admin',
-      name: 'Admin (Bypass)',
-      email: 'admin@local.test',
-      role: 'Super Admin',
-      department: 'All Departments',
-      status: 'Active',
-    } as User;
-  };
+  const [isLoading, setIsLoading] = useState(true);
 
   const mapProfileToUser = (authUser: any, profile: any): User => {
     const email = String(authUser?.email || '');
@@ -84,12 +46,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (bypassEnabled) {
-      setUser(getBypassUser());
-      setIsLoading(false);
-      return;
-    }
-
     const sb = getSupabase();
     if (!sb) {
       setIsLoading(false);
@@ -104,6 +60,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data } = await sb.auth.getSession();
         const au = data?.session?.user;
         if (!au) {
+          const autoEmail = String((import.meta as any)?.env?.VITE_AUTOLOGIN_EMAIL || '').trim().toLowerCase();
+          const autoPassword = String((import.meta as any)?.env?.VITE_AUTOLOGIN_PASSWORD || '').trim();
+          if (autoEmail && autoPassword) {
+            const { data: sdata, error: serr } = await sb.auth.signInWithPassword({
+              email: autoEmail,
+              password: autoPassword,
+            });
+            if (serr) {
+              if (!cancelled) setUser(null);
+              return;
+            }
+            const au2 = sdata?.user;
+            if (!au2) {
+              if (!cancelled) setUser(null);
+              return;
+            }
+            const { data: prof2, error: profErr2 } = await sb
+              .from('profiles')
+              .select('id, full_name, role, department')
+              .eq('id', au2.id)
+              .maybeSingle();
+            if (profErr2) throw profErr2;
+            if (!cancelled) setUser(mapProfileToUser(au2, prof2));
+            return;
+          }
+
           if (!cancelled) setUser(null);
           return;
         }
@@ -155,30 +137,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remember: boolean,
     rolePref?: 'admin' | 'officer'
   ): Promise<{ success: boolean; message: string }> => {
-    if (bypassEnabled) {
-      const mapped = rolePref === 'officer'
-        ? ({
-          id: 'bypass-officer',
-          name: 'Officer (Bypass)',
-          email: email?.trim() || 'officer@local.test',
-          role: 'Field Officer',
-          department: 'Roads',
-          status: 'Active',
-        } as User)
-        : ({
-          id: 'bypass-admin',
-          name: 'Admin (Bypass)',
-          email: email?.trim() || 'admin@local.test',
-          role: 'Super Admin',
-          department: 'All Departments',
-          status: 'Active',
-        } as User);
-
-      setUser(mapped);
-      try { localStorage.setItem('nagrikGPT_login_role', rolePref || 'admin'); } catch {}
-      return { success: true, message: `Bypass login enabled (${rolePref || 'admin'}).` };
-    }
-
     // Validate government email
     if (!isValidGovEmail(email)) {
       return { success: false, message: 'Please use an official government email address' };
@@ -232,11 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    if (bypassEnabled) {
-      // Keep the app accessible when bypass is enabled.
-      setUser(getBypassUser());
-      return;
-    }
     const sb = getSupabase();
     try { sb?.auth.signOut(); } catch {}
     setUser(null);
