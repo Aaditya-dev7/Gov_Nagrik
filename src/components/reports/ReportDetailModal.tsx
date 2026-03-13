@@ -206,12 +206,28 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     if (!resolutionDocument) return null;
     const sb = getSupabase();
     if (!sb) return null;
+
+    const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
+      let t: any;
+      const timeout = new Promise<T>((_resolve, reject) => {
+        t = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
+      });
+      try {
+        return await Promise.race([p, timeout]);
+      } finally {
+        try { clearTimeout(t); } catch {}
+      }
+    };
     
     const ext = resolutionDocument.name.split('.').pop() || 'bin';
     const path = `resolution-docs/${report.report_id}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
     
     try {
-      const { error } = await sb.storage.from('reports').upload(path, resolutionDocument, { cacheControl: '3600', upsert: true });
+      const { error } = await withTimeout(
+        sb.storage.from('reports').upload(path, resolutionDocument, { cacheControl: '3600', upsert: true }),
+        60_000,
+        'Upload',
+      );
       if (error) {
         console.error('Upload error:', error);
         return null;
@@ -273,7 +289,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
       const sb = getSupabase();
       if (sb) {
         // Update reports table with resolution_documents and resolution_note
-        const { error: updateError } = await sb
+        const updatePromise = sb
           .from('reports')
           .update({
             status: 'Resolved',
@@ -281,6 +297,11 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             resolution_note: resolutionNote,
           })
           .eq('id', report.report_id);
+
+        const { error: updateError } = await Promise.race([
+          updatePromise,
+          new Promise<{ error: any }>((_resolve, reject) => setTimeout(() => reject(new Error('Save timed out')), 60_000)),
+        ]);
         
         if (updateError) {
           console.error('Failed to update report with resolution documents:', updateError);
@@ -314,7 +335,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
       setShowResolveDialog(false);
       setResolutionDocument(null);
       setResolutionNote('');
-      setResolutionDocUrl('');
+      setResolutionDocUrl(null);
       onOpenChange(false);
     } finally {
       setUploadingDoc(false);
