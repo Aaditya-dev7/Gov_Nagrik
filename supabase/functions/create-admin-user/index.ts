@@ -31,7 +31,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const SUPABASE_URL = Deno.env.get("PROJECT_URL") || Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY");
     const ADMIN_BOOTSTRAP_TOKEN = Deno.env.get("ADMIN_BOOTSTRAP_TOKEN");
 
     if (!SUPABASE_URL) {
@@ -41,9 +41,9 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    if (!SUPABASE_SERVICE_ROLE_KEY) {
+    if (!SERVICE_ROLE_KEY) {
       return new Response(
-        JSON.stringify({ ok: false, error: 'Missing SUPABASE_SERVICE_ROLE_KEY' }),
+        JSON.stringify({ ok: false, error: 'Missing SERVICE_ROLE_KEY' }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -80,7 +80,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
