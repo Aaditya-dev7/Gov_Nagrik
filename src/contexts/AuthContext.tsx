@@ -18,11 +18,19 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_BYPASS_ENABLED = String((import.meta as any)?.env?.VITE_DISABLE_AUTH || '').toLowerCase() === 'true';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const bypassEnabled = (() => {
+    const fromEnv = String((import.meta as any)?.env?.VITE_DISABLE_AUTH || '').toLowerCase() === 'true';
+    if (fromEnv) return true;
+    try {
+      return localStorage.getItem('nagrikGPT_disable_auth') === '1';
+    } catch {
+      return false;
+    }
+  })();
+
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => !bypassEnabled);
 
   const getBypassUser = (): User => {
     let pref: 'admin' | 'officer' = 'admin';
@@ -76,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (AUTH_BYPASS_ENABLED) {
+    if (bypassEnabled) {
       setUser(getBypassUser());
       setIsLoading(false);
       return;
@@ -147,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remember: boolean,
     rolePref?: 'admin' | 'officer'
   ): Promise<{ success: boolean; message: string }> => {
-    if (AUTH_BYPASS_ENABLED) {
+    if (bypassEnabled) {
       const mapped = rolePref === 'officer'
         ? ({
           id: 'bypass-officer',
@@ -224,7 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = () => {
-    if (AUTH_BYPASS_ENABLED) {
+    if (bypassEnabled) {
       // Keep the app accessible when bypass is enabled.
       setUser(getBypassUser());
       return;
