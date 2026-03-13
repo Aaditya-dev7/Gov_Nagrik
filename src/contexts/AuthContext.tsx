@@ -171,6 +171,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     remember: boolean,
     rolePref?: 'admin' | 'officer'
   ): Promise<{ success: boolean; message: string }> => {
+    if (rolePref === 'officer') {
+      const emailTrim = email.trim().toLowerCase();
+      let savedPw = '';
+      try { savedPw = localStorage.getItem(`nagrikGPT_local_pw:${emailTrim}`) || ''; } catch {}
+
+      if (!savedPw) {
+        return { success: false, message: 'Officer password not set on this device. Please use “Forgot Password / Set Password” first.' };
+      }
+      if (String(password || '') !== savedPw) {
+        return { success: false, message: 'Invalid credentials' };
+      }
+
+      const deptByEmail: Record<string, string> = {
+        'sneha.kulkarni@nagarpalika.gov.in': 'Water Supply',
+        'roads.officer@nagarpalika.gov.in': 'Roads',
+        'sanitation.officer@nagarpalika.gov.in': 'Sanitation',
+        'lighting.officer@nagarpalika.gov.in': 'Street Lighting',
+        'drainage.officer@nagarpalika.gov.in': 'Drainage',
+        'roads2.officer@nagarpalika.gov.in': 'Roads',
+        'sanitation2.officer@nagarpalika.gov.in': 'Sanitation',
+      };
+
+      const officerUser: User = {
+        id: `local-officer:${emailTrim}`,
+        name: emailTrim.split('@')[0] || 'Officer',
+        email: emailTrim,
+        role: 'Field Officer',
+        department: deptByEmail[emailTrim] || 'General',
+        status: 'Active',
+      } as User;
+
+      setUser(officerUser);
+      try { localStorage.setItem('nagrikGPT_login_role', 'officer'); } catch {}
+      return { success: true, message: `Welcome back, ${officerUser.name}!` };
+    }
+
     // Validate government email
     if (!isValidGovEmail(email)) {
       return { success: false, message: 'Please use an official government email address' };

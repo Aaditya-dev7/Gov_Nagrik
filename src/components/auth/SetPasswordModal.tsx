@@ -60,6 +60,10 @@ export function SetPasswordModal({ open, onOpenChange, defaultEmail }: SetPasswo
         return;
       }
 
+      try {
+        localStorage.setItem(`nagrikGPT_local_pw:${emailTrimmed}`, password);
+      } catch {}
+
       toast({ title: 'Password set', description: 'You can now sign in with your new password.' });
       onOpenChange(false);
     } finally {
