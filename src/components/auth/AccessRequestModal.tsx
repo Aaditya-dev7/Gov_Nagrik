@@ -22,7 +22,14 @@ const ADMIN_EMAILS = [
   'nishant.jadhav_siot23@comp.sce.edu.in',
 ];
 
-// STRICT: Allowed official email domains
+// STRICT: Allowed official email domaiInvoke-RestMethod : The remote server returned an error: (401) Unauthorized.
+At line:1 char:1
++ Invoke-RestMethod -Method POST -Uri $url -Headers $headers -ContentTy ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (System.Net.HttpWebRequest:HttpWebRequest) [Invoke-Re 
+   stMethod], WebException
+    + FullyQualifiedErrorId : WebCmdletWebResponseException,Microsoft.PowerShell.Commands.InvokeRestM  
+   ethodCommandns
 const ALLOWED_EMAIL_DOMAINS = [
   '.gov.in',
   '.nic.in',

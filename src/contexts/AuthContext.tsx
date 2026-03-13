@@ -22,18 +22,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const withTimeout = async <T,>(p: Promise<T>, ms: number, label: string): Promise<T> => {
-    let t: any;
-    const timeout = new Promise<T>((_resolve, reject) => {
-      t = setTimeout(() => reject(new Error(`${label} timed out`)), ms);
-    });
-    try {
-      return await Promise.race([p, timeout]);
-    } finally {
-      try { clearTimeout(t); } catch {}
-    }
-  };
-
   const mapProfileToUser = (authUser: any, profile: any): User => {
     const email = String(authUser?.email || '');
     const roleRaw = String(profile?.role || '').toLowerCase();
@@ -67,72 +55,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
 
-    let loadingFailsafe: any;
-    try {
-      loadingFailsafe = setTimeout(() => {
-        if (cancelled) return;
-        setUser(null);
-        setIsLoading(false);
-      }, 15_000);
-    } catch {}
-
     const load = async () => {
       try {
-        const { data } = await withTimeout(sb.auth.getSession(), 12_000, 'Auth session');
+        const { data } = await sb.auth.getSession();
         const au = data?.session?.user;
         if (!au) {
-          let autoLoginDisabled = false;
-          try {
-            autoLoginDisabled = localStorage.getItem('nagrikGPT_autologin_disabled') === '1';
-          } catch {}
-
-          const autoEmail = String((import.meta as any)?.env?.VITE_AUTOLOGIN_EMAIL || '').trim().toLowerCase();
-          const autoPassword = String((import.meta as any)?.env?.VITE_AUTOLOGIN_PASSWORD || '').trim();
-          if (!autoLoginDisabled && autoEmail && autoPassword) {
-            const { data: sdata, error: serr } = await withTimeout(
-              sb.auth.signInWithPassword({
-                email: autoEmail,
-                password: autoPassword,
-              }),
-              12_000,
-              'Auto login',
-            );
-            if (serr) {
-              if (!cancelled) setUser(null);
-              return;
-            }
-            const au2 = sdata?.user;
-            if (!au2) {
-              if (!cancelled) setUser(null);
-              return;
-            }
-            const { data: prof2, error: profErr2 } = await withTimeout(
-              sb
-                .from('profiles')
-                .select('id, full_name, role, department')
-                .eq('id', au2.id)
-                .maybeSingle(),
-              12_000,
-              'Load profile',
-            );
-            if (profErr2) throw profErr2;
-            if (!cancelled) setUser(mapProfileToUser(au2, prof2));
-            return;
-          }
-
           if (!cancelled) setUser(null);
           return;
         }
 
-        const { data: prof, error: profErr } = await withTimeout(
-          sb
-            .from('profiles')
-            .select('id, full_name, role, department')
-            .eq('id', au.id)
-            .maybeSingle(),
-          12_000,
-          'Load profile',
-        );
+        const { data: prof, error: profErr } = await sb
+          .from('profiles')
+          .select('id, full_name, role, department')
+          .eq('id', au.id)
+          .maybeSingle();
 
         if (profErr) throw profErr;
         if (!cancelled) setUser(mapProfileToUser(au, prof));
@@ -140,7 +76,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
-        try { clearTimeout(loadingFailsafe); } catch {}
       }
     };
 
@@ -153,15 +88,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           return;
         }
-        const { data: prof } = await withTimeout(
-          sb
-            .from('profiles')
-            .select('id, full_name, role, department')
-            .eq('id', au.id)
-            .maybeSingle(),
-          12_000,
-          'Load profile',
-        );
+        const { data: prof } = await sb
+          .from('profiles')
+          .select('id, full_name, role, department')
+          .eq('id', au.id)
+          .maybeSingle();
         setUser(mapProfileToUser(au, prof));
       } catch {
         setUser(null);
@@ -170,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
-      try { clearTimeout(loadingFailsafe); } catch {}
       try { sub?.subscription?.unsubscribe() } catch {}
     };
   }, []);
@@ -236,7 +166,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     const sb = getSupabase();
     try { sb?.auth.signOut(); } catch {}
-    try { localStorage.setItem('nagrikGPT_autologin_disabled', '1'); } catch {}
     setUser(null);
   };
 

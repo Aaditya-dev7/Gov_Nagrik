@@ -31,9 +31,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY =
-      Deno.env.get("SERVICE_ROLE_KEY") ??
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const ADMIN_BOOTSTRAP_TOKEN = Deno.env.get("ADMIN_BOOTSTRAP_TOKEN");
 
     if (!SUPABASE_URL) {
@@ -45,7 +43,7 @@ Deno.serve(async (req: Request) => {
 
     if (!SUPABASE_SERVICE_ROLE_KEY) {
       return new Response(
-        JSON.stringify({ ok: false, error: 'Missing SERVICE_ROLE_KEY' }),
+        JSON.stringify({ ok: false, error: 'Missing SUPABASE_SERVICE_ROLE_KEY' }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -66,7 +64,6 @@ Deno.serve(async (req: Request) => {
     const password = String(body?.password || '').trim();
     const full_name = typeof body?.full_name === 'string' ? body.full_name : 'Admin';
     const department = typeof body?.department === 'string' ? body.department : 'All Departments';
-    const role = (typeof body?.role === 'string' && ['admin', 'officer'].includes(body.role)) ? body.role : 'admin';
 
     if (!email || !email.includes('@')) {
       return new Response(
@@ -106,7 +103,7 @@ Deno.serve(async (req: Request) => {
         password,
         email_confirm: true,
         user_metadata: {
-          role: role,
+          role: 'admin',
           department,
           full_name,
         },
@@ -132,7 +129,7 @@ Deno.serve(async (req: Request) => {
     const { error: profErr } = await admin.from('profiles').upsert({
       id: userId,
       full_name,
-      role: role,
+      role: 'admin',
       department,
     });
 
