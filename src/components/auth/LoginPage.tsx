@@ -24,10 +24,10 @@ export function LoginPage() {
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [passwordEmail, setPasswordEmail] = useState('');
   const [roleInfo, setRoleInfo] = useState<{ kind: 'admin' | 'officer'; department?: string } | null>(null);
-  const [roleSelection, setRoleSelection] = useState<'admin' | 'officer'>(() => {
+  const [roleSelection, setRoleSelection] = useState<'admin' | 'officer' | 'staff'>(() => {
     try {
       const saved = localStorage.getItem('nagrikGPT_login_role');
-      if (saved === 'admin' || saved === 'officer') return saved;
+      if (saved === 'admin' || saved === 'officer' || saved === 'staff') return saved;
     } catch {}
     return 'officer';
   });
@@ -223,13 +223,14 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="role">Sign in as</Label>
-              <Select value={roleSelection} onValueChange={(v) => setRoleSelection(v as 'admin' | 'officer')}>
+              <Select value={roleSelection} onValueChange={(v) => setRoleSelection(v as 'admin' | 'officer' | 'staff')}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="officer">Officer</SelectItem>
+                  <SelectItem value="staff">Staff</SelectItem>
                 </SelectContent>
               </Select>
             </div>
