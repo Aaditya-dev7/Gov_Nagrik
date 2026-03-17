@@ -176,6 +176,7 @@ export function MainApp() {
             assignedOnlyUserId={assignedOnlyUserId}
             presetFilters={reportsPresetFilters}
             staffDepartment={isStaff ? user?.department : undefined}
+            officerDepartment={!isAdmin && !isStaff ? user?.department : undefined}
           />
         );
       case 'users':

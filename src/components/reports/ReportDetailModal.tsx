@@ -49,8 +49,33 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const { toast } = useToast();
   
   // Officers and departments from database
-  const [officers, setOfficers] = useState<{ id: string; name: string; role: string }[]>([]);
-  const [departments, setDepartments] = useState<string[]>([]);
+  const [officers, setOfficers] = useState<{ id: string; name: string; role: string; department: string }[]>([]);
+  const [departments] = useState<string[]>([
+    'Roads & Infrastructure',
+    'Sanitation',
+    'Water Supply',
+    'Street Lighting',
+    'Parks & Gardens',
+    'General Services'
+  ]);
+  
+  // Selected department for filtering officers
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  
+  // Category to department mapping for auto-suggest
+  const categoryToDepartment: Record<string, string> = {
+    'Pothole': 'Roads & Infrastructure',
+    'Road Damage': 'Roads & Infrastructure',
+    'Tree Falling Risk': 'Roads & Infrastructure',
+    'Garbage Collection': 'Sanitation',
+    'Illegal Dumping': 'Sanitation',
+    'Sewage Overflow': 'Sanitation',
+    'Water Leakage': 'Water Supply',
+    'Drainage Block': 'Water Supply',
+    'Street Light': 'Street Lighting',
+    'Park Maintenance': 'Parks & Gardens',
+    'Other': 'General Services'
+  };
   
   // Staff members for assignment (officer's team)
   const [staffMembers, setStaffMembers] = useState<{ id: string; name: string; department: string }[]>([]);
@@ -79,7 +104,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const [revAddr, setRevAddr] = useState<string | null>(null);
   const [inIndia, setInIndia] = useState<boolean | null>(null);
 
-  // Fetch officers and departments from database
+  // Fetch officers from database
   useEffect(() => {
     if (!open) return;
     const sb = getSupabase();
@@ -87,27 +112,29 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     
     async function fetchData() {
       try {
-        // Fetch officers (Field Officers and Department Admins)
+        // Fetch officers (role = 'officer') with department info
         const { data: officersData } = await sb
           .from('profiles')
-          .select('id, full_name, role')
-          .in('role', ['Field Officer', 'Department Admin', 'officer', 'admin']);
+          .select('id, full_name, role, department')
+          .eq('role', 'officer');
         
         if (officersData) {
           setOfficers(officersData.map((o: any) => ({
             id: o.id,
             name: o.full_name || 'Unknown',
             role: o.role,
+            department: o.department || 'General Services',
           })));
         }
         
-        // Fetch staff members if current user is an officer
-        if (user?.id && !isAdmin) {
+        // Fetch staff members if current user is an officer (only from same department)
+        // FIX 1: Filter by department only, not by reports_to_officer_id
+        if (user?.id && !isAdmin && user.department) {
           const { data: staffData } = await sb
             .from('profiles')
             .select('id, full_name, department')
-            .eq('reports_to_officer_id', user.id)
-            .eq('role', 'Staff');
+            .eq('role', 'staff')
+            .eq('department', user.department);
           
           if (staffData) {
             setStaffMembers(staffData.map((s: any) => ({
@@ -117,24 +144,29 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             })));
           }
         }
-        
-        // Fetch unique departments from reports
-        const { data: reportsData } = await sb
-          .from('reports')
-          .select('assigned_department')
-          .not('assigned_department', 'is', null);
-        
-        if (reportsData) {
-          const uniqueDepts = [...new Set(reportsData.map((r: any) => r.assigned_department).filter(Boolean))];
-          setDepartments(uniqueDepts.sort());
-        }
       } catch (err) {
         console.error('Failed to fetch officers/departments:', err);
       }
     }
     
     fetchData();
-  }, [open]);
+  }, [open, user?.id, isAdmin, user?.department]);
+  
+  // Auto-suggest department when report loads (admin only)
+  useEffect(() => {
+    if (!open || !report || !isAdmin) return;
+    const suggestedDept = categoryToDepartment[report.category];
+    if (suggestedDept && !report.assigned_department) {
+      setSelectedDepartment(suggestedDept);
+    } else if (report.assigned_department) {
+      setSelectedDepartment(report.assigned_department);
+    }
+  }, [open, report, isAdmin]);
+  
+  // Filter officers by selected department
+  const filteredOfficers = selectedDepartment
+    ? officers.filter(o => o.department === selectedDepartment)
+    : officers;
 
   useEffect(() => {
     if (!open || !report) return;
@@ -179,16 +211,27 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
 
   if (!report) return null;
 
-  // STRICT LOGIC: Only assigned officer can act on the report
-  // Admin can also act on any report (full access)
+  // FIX 2: Officer department-based permissions
+  // - Officers see ALL reports but can only ACT on reports in their department
+  // - Admin has full access to all reports
+  const userDepartment = user?.department || '';
+  const reportDepartment = report.assigned_department || '';
+  
+  // Check if report belongs to officer's department
+  const isInUserDepartment = userDepartment && reportDepartment && userDepartment === reportDepartment;
+  
+  // Admin can always act, Officer can only act on their department's reports
   const officerCanAct = Boolean(
-    isAdmin || (user?.id && report.assigned_officer_id && report.assigned_officer_id === user.id)
+    isAdmin || isInUserDepartment
   );
   
-  // Admin can only assign, not act directly
+  // Admin can assign officers
   const adminCanAssign = isAdmin;
   
-  // Check if report is assigned to current user (officer)
+  // Check if report is in officer's department (for UI badge)
+  const isDepartmentMatch = isInUserDepartment;
+  
+  // Check if report is assigned to current user
   const isAssignedToCurrentUser = report.assigned_officer_id === user?.id;
 
   const getDeadlineDays = (priority: string) => {
@@ -639,13 +682,22 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 <>
                   <div className="space-y-2">
                     <Label>Department</Label>
-                    <Select defaultValue={report.assigned_department || 'unassigned'} onValueChange={(val) => {
-                      const dep = val === 'unassigned' ? 'Administration' : val;
-                      updateAssignment(report.report_id, { department: dep, actor: user?.name || 'System' });
-                      toast({ title: 'Assignment Updated', description: `Department set to ${dep}` });
-                    }}>
+                    <Select 
+                      value={selectedDepartment || 'unassigned'} 
+                      onValueChange={(val) => {
+                        if (val === 'unassigned') {
+                          setSelectedDepartment('');
+                          updateAssignment(report.report_id, { department: 'General Services', actor: user?.name || 'System' });
+                          toast({ title: 'Assignment Updated', description: 'Department set to General Services' });
+                        } else {
+                          setSelectedDepartment(val);
+                          updateAssignment(report.report_id, { department: val, actor: user?.name || 'System' });
+                          toast({ title: 'Assignment Updated', description: `Department set to ${val}` });
+                        }
+                      }
+                    }>
                       <SelectTrigger>
-                        <SelectValue placeholder="Unassigned" />
+                        <SelectValue placeholder="Select Department" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
@@ -654,29 +706,43 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                         ))}
                       </SelectContent>
                     </Select>
+                    {report.category && categoryToDepartment[report.category] && !report.assigned_department && (
+                      <p className="text-xs text-muted-foreground">
+                        Suggested: <span className="text-primary font-medium">{categoryToDepartment[report.category]}</span> (based on category: {report.category})
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label>Officer</Label>
-                    <Select defaultValue={report.assigned_officer_id || 'unassigned'} onValueChange={(val) => {
-                      if (val === 'unassigned') {
-                        updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
-                        toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
-                      } else {
-                        const officer = officers.find(o => o.id === val);
-                        updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
-                        toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
+                    <Label>Officer {selectedDepartment && <span className="text-xs text-muted-foreground">({selectedDepartment})</span>}</Label>
+                    <Select 
+                      value={report.assigned_officer_id || 'unassigned'} 
+                      onValueChange={(val) => {
+                        if (val === 'unassigned') {
+                          updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
+                          toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
+                        } else {
+                          const officer = filteredOfficers.find(o => o.id === val);
+                          updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
+                          toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
+                        }
                       }
-                    }}>
+                    }>
                       <SelectTrigger>
-                        <SelectValue placeholder="Unassigned" />
+                        <SelectValue placeholder={selectedDepartment ? `Select officer from ${selectedDepartment}` : 'Select department first'} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {officers.map(officer => (
-                          <SelectItem key={officer.id} value={officer.id}>{officer.name}</SelectItem>
+                        {filteredOfficers.length === 0 && selectedDepartment && (
+                          <SelectItem value="_none" disabled>No officers in this department</SelectItem>
+                        )}
+                        {filteredOfficers.map(officer => (
+                          <SelectItem key={officer.id} value={officer.id}>{officer.name} ({officer.department})</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {!selectedDepartment && (
+                      <p className="text-xs text-muted-foreground">Select a department to see available officers</p>
+                    )}
                   </div>
                 </>
               ) : (
@@ -693,51 +759,57 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                 </div>
               )}
               
-              {/* Assign to Staff - Only for assigned officers */}
-              {isAssignedToCurrentUser && staffMembers.length > 0 && (
+              {/* Assign to Staff - Only for officers in their department */}
+              {isDepartmentMatch && !isAdmin && (
                 <div className="space-y-2 mt-4 p-3 rounded-lg border border-primary/20 bg-primary/5">
                   <h5 className="font-medium text-sm">Assign to Staff Member</h5>
                   <p className="text-xs text-muted-foreground">Delegate this report to a staff member on your team.</p>
-                  <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select staff member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {staffMembers.map(staff => (
-                        <SelectItem key={staff.id} value={staff.id}>
-                          {staff.name} ({staff.department})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button 
-                    size="sm" 
-                    className="w-full mt-2"
-                    disabled={!selectedStaffId}
-                    onClick={async () => {
-                      const sb = getSupabase();
-                      if (!sb || !selectedStaffId) return;
-                      
-                      const staff = staffMembers.find(s => s.id === selectedStaffId);
-                      
-                      const { error } = await sb.from('staff_tasks').insert({
-                        report_id: report.report_id,
-                        staff_user_id: selectedStaffId,
-                        assigned_by_officer_id: user?.id,
-                        status: 'assigned',
-                        assigned_at: new Date().toISOString(),
-                      });
-                      
-                      if (error) {
-                        toast({ title: 'Error', description: error.message, variant: 'destructive' });
-                      } else {
-                        toast({ title: 'Success', description: `Report assigned to ${staff?.name}` });
-                        setSelectedStaffId('');
-                      }
-                    }}
-                  >
-                    Assign to Staff
-                  </Button>
+                  {staffMembers.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-2">No staff available for your department</p>
+                  ) : (
+                    <>
+                      <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select staff member" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {staffMembers.map(staff => (
+                            <SelectItem key={staff.id} value={staff.id}>
+                              {staff.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button 
+                        size="sm" 
+                        className="w-full mt-2"
+                        disabled={!selectedStaffId}
+                        onClick={async () => {
+                          const sb = getSupabase();
+                          if (!sb || !selectedStaffId) return;
+                          
+                          const staff = staffMembers.find(s => s.id === selectedStaffId);
+                          
+                          const { error } = await sb.from('staff_tasks').insert({
+                            report_id: report.report_id,
+                            staff_user_id: selectedStaffId,
+                            assigned_by_officer_id: user?.id,
+                            status: 'assigned',
+                            assigned_at: new Date().toISOString(),
+                          });
+                          
+                          if (error) {
+                            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                          } else {
+                            toast({ title: 'Success', description: `Report assigned to ${staff?.name}` });
+                            setSelectedStaffId('');
+                          }
+                        }}
+                      >
+                        Assign to Staff
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -748,11 +820,19 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
             <div className="space-y-3">
               <h4 className="font-semibold">Actions</h4>
               
-              {/* STRICT LOGIC: Show warning if not assigned */}
-              {!isAssignedToCurrentUser && !isAdmin && (
+              {/* STRICT LOGIC: Show warning if not in officer's department */}
+              {!isDepartmentMatch && !isAdmin && (
                 <div className="rounded-lg border border-warning/30 bg-warning-light p-3 text-sm text-warning">
                   <AlertTriangle className="w-4 h-4 inline mr-2" />
-                  You are not assigned to this report. Contact admin for assignment.
+                  This report belongs to <strong>{report.assigned_department || 'Unassigned'}</strong> department. You can only act on reports in your department (<strong>{userDepartment}</strong>).
+                </div>
+              )}
+              
+              {/* Show department match badge */}
+              {isDepartmentMatch && !isAdmin && (
+                <div className="rounded-lg border border-success/30 bg-success-light p-3 text-sm text-success">
+                  <CheckCircle2 className="w-4 h-4 inline mr-2" />
+                  <strong>Your Department</strong> - You can take action on this report.
                 </div>
               )}
               

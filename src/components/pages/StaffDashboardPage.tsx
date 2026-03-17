@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useReports } from '@/contexts/ReportsContext';
 import { Report } from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
@@ -13,9 +12,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { 
   ClipboardList, Upload, CheckCircle, Clock, MapPin, Calendar, 
-  User, FileText, Image, Loader2, AlertCircle, Bell
+  User, FileText, Image, Loader2
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface StaffTask {
   id: string;
@@ -36,7 +34,6 @@ export function StaffDashboardPage() {
   const { toast } = useToast();
   
   const [myTasks, setMyTasks] = useState<StaffTask[]>([]);
-  const [departmentReports, setDepartmentReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<StaffTask | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -49,7 +46,7 @@ export function StaffDashboardPage() {
 
   useEffect(() => {
     loadData();
-  }, [department, reports]);
+  }, [user?.id]);
 
   const loadData = async () => {
     const sb = getSupabase();
@@ -57,7 +54,7 @@ export function StaffDashboardPage() {
 
     setIsLoading(true);
     try {
-      // Load tasks assigned to this staff member
+      // Staff can ONLY see tasks assigned to them personally
       const { data: tasksData } = await sb
         .from('staff_tasks')
         .select('*, report:report_id(*)')
@@ -67,50 +64,10 @@ export function StaffDashboardPage() {
       if (tasksData) {
         setMyTasks(tasksData as StaffTask[]);
       }
-
-      // Filter department reports that don't have a task yet
-      const deptReports = reports.filter(r => 
-        r.assigned_department === department && 
-        r.status !== 'Resolved' &&
-        r.status !== 'Rejected'
-      );
-      setDepartmentReports(deptReports);
     } catch (err) {
       console.error('Error loading staff data:', err);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const acceptReport = async (report: Report) => {
-    const sb = getSupabase();
-    if (!sb || !user) return;
-
-    try {
-      const { error } = await sb
-        .from('staff_tasks')
-        .insert({
-          report_id: report.report_id,
-          staff_user_id: user.id,
-          assigned_by_officer_id: user.reports_to_officer_id,
-          status: 'in_progress',
-          assigned_at: new Date().toISOString(),
-        });
-
-      if (error) throw error;
-
-      toast({
-        title: 'Task Accepted',
-        description: `You are now working on report ${report.report_id}`,
-      });
-
-      loadData();
-    } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to accept task',
-        variant: 'destructive',
-      });
     }
   };
 
@@ -294,22 +251,14 @@ export function StaffDashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Available Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{departmentReports.length}</div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-500">
-              {myTasks.filter(t => t.status === 'in_progress').length}
+              {myTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length}
             </div>
           </CardContent>
         </Card>
@@ -342,7 +291,7 @@ export function StaffDashboardPage() {
         {myTasks.filter(t => t.status !== 'completed').length === 0 ? (
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
-              No active tasks. Accept a departmental report to get started.
+              No active tasks assigned to you. Your supervising officer will assign tasks.
             </CardContent>
           </Card>
         ) : (
@@ -375,54 +324,6 @@ export function StaffDashboardPage() {
                     <Button size="sm" onClick={() => completeTask(task)}>
                       <Upload className="w-4 h-4 mr-1" />
                       Complete
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Available Department Reports */}
-      <div>
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Bell className="w-5 h-5" />
-          Available Department Reports
-        </h2>
-        {departmentReports.length === 0 ? (
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              No reports available in your department.
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-3">
-            {departmentReports.map(report => (
-              <Card key={report.report_id} className="hover:shadow-md transition-shadow">
-                <CardContent className="py-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{report.report_id}</span>
-                        {getPriorityBadge(report.priority)}
-                        <Badge variant="outline">{report.status}</Badge>
-                      </div>
-                      <p className="text-sm">{report.description?.slice(0, 100)}...</p>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <MapPin className="w-3 h-3" />
-                          {report.location_text}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {new Date(report.submitted_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                    <Button size="sm" onClick={() => acceptReport(report)}>
-                      <CheckCircle className="w-4 h-4 mr-1" />
-                      Accept
                     </Button>
                   </div>
                 </CardContent>

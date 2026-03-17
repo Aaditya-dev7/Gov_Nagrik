@@ -28,9 +28,10 @@ interface ReportsPageProps {
   assignedOnlyUserId?: string | null;
   presetFilters?: { status?: string[]; priority?: string[] } | null;
   staffDepartment?: string;
+  officerDepartment?: string; // FIX 4: For officer's department filter
 }
 
-export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters, staffDepartment }: ReportsPageProps) {
+export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters, staffDepartment, officerDepartment }: ReportsPageProps) {
   const { reports } = useReports();
   const _lang = useLang();
   const [viewMode, setViewMode] = useState<'table' | 'card'>('card');
@@ -39,6 +40,7 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
   const [priorityFilters, setPriorityFilters] = useState<string[]>([]);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [selectedReports, setSelectedReports] = useState<string[]>([]);
+  const [showMyDeptOnly, setShowMyDeptOnly] = useState(false); // FIX 4: My Department filter
 
   // Apply preset filters from navigation
   useEffect(() => {
@@ -54,6 +56,11 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
     // Staff can only see reports from their department
     if (staffDepartment) {
       result = result.filter(r => r.assigned_department === staffDepartment);
+    }
+    
+    // FIX 4: Officer "My Department" filter
+    if (showMyDeptOnly && officerDepartment) {
+      result = result.filter(r => r.assigned_department === officerDepartment);
     }
     
     // Officer assigned filter
@@ -98,7 +105,7 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
     }
 
     return result;
-  }, [reports, searchQuery, statusFilters, priorityFilters, categoryFilter, sortBy, assignedOnlyUserId]);
+  }, [reports, searchQuery, statusFilters, priorityFilters, categoryFilter, sortBy, assignedOnlyUserId, staffDepartment, showMyDeptOnly, officerDepartment]);
 
   const clearFilters = () => {
     setStatusFilters([]);
@@ -234,6 +241,19 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
               {t('reports.cards', 'Cards')}
             </Button>
           </div>
+
+          {/* FIX 4: My Department filter toggle for officers */}
+          {officerDepartment && (
+            <Button
+              variant={showMyDeptOnly ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setShowMyDeptOnly(!showMyDeptOnly)}
+              className={showMyDeptOnly ? 'bg-success hover:bg-success/90' : ''}
+            >
+              <Filter className="w-4 h-4 mr-1" />
+              {showMyDeptOnly ? 'All Reports' : 'My Department'}
+            </Button>
+          )}
 
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-full sm:w-48">
