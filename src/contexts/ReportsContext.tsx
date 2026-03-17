@@ -319,44 +319,69 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
               return merged;
             });
           }
-          // Load media from Supabase Storage bucket 'reports' for each report id
-          try {
-            const mediaMap: Record<string, string[]> = {};
-            for (const r of filtered) {
-              const { data: files } = await sb.storage.from('reports').list(r.report_id);
-              if (files && files.length) {
-                const urls: string[] = [];
-                for (const f of files) {
-                  const { data } = sb.storage.from('reports').getPublicUrl(`${r.report_id}/${f.name}`);
-                  if (data?.publicUrl) urls.push(data.publicUrl);
-                }
-                mediaMap[r.report_id] = urls;
-              }
-            }
-            if (mounted) setReports(prev => prev.map(r => ({ ...r, media: mediaMap[r.report_id] || r.media || [] })));
-          } catch {}
-          const ids = mapped.map(r => r.report_id);
-          if (ids.length) {
-            const { data: tData } = await sb.from('report_timeline').select('*').in('report_id', ids).order('at', { ascending: true });
-            if (mounted && tData) {
-              setReports(prev => prev.map(r => ({
-                ...r,
-                timeline: tData.filter(t => t.report_id === r.report_id).map(t => ({ actor: t.actor, action: t.action, at: t.at }))
-              })));
-            }
-          }
 
-          // Load notifications from DB if table exists
-          try {
-            const { data: nData } = await sb.from('notifications').select('*').order('timestamp', { ascending: false });
-            if (mounted && nData && nData.length) {
-              setNotifications(nData.map(mapDbToNotif));
-            }
-          } catch {}
+          // Unblock UI ASAP: fetch heavy joins/storage in background.
+          // (Reports list renders quickly, then timelines/media/notifications fill in.)
+          setIsLoading(false);
+
+          const ids = filtered.map(r => r.report_id);
+
+          // Load media from Storage and timeline rows in parallel.
+          void (async () => {
+            try {
+              const mediaMap: Record<string, string[]> = {};
+              await Promise.all(
+                filtered.map(async (r) => {
+                  try {
+                    const { data: files } = await sb.storage.from('reports').list(r.report_id);
+                    if (!files || files.length === 0) return;
+                    const urls: string[] = [];
+                    for (const f of files) {
+                      const { data } = sb.storage.from('reports').getPublicUrl(`${r.report_id}/${f.name}`);
+                      if (data?.publicUrl) urls.push(data.publicUrl);
+                    }
+                    mediaMap[r.report_id] = urls;
+                  } catch {}
+                })
+              );
+              if (mounted) {
+                setReports(prev => prev.map(r => ({ ...r, media: mediaMap[r.report_id] || r.media || [] })));
+              }
+            } catch {}
+          })();
+
+          void (async () => {
+            try {
+              if (!ids.length) return;
+              const { data: tData } = await sb
+                .from('report_timeline')
+                .select('*')
+                .in('report_id', ids)
+                .order('at', { ascending: true });
+              if (!mounted || !tData) return;
+              const byReport: Record<string, { actor: string; action: string; at: string }[]> = {};
+              for (const t of tData as any[]) {
+                const rid = String(t.report_id);
+                (byReport[rid] ||= []).push({ actor: t.actor, action: t.action, at: t.at });
+              }
+              setReports(prev => prev.map(r => ({ ...r, timeline: byReport[r.report_id] || r.timeline || [] })));
+            } catch {}
+          })();
+
+          // Load notifications from DB if table exists (also background)
+          void (async () => {
+            try {
+              const { data: nData } = await sb.from('notifications').select('*').order('timestamp', { ascending: false });
+              if (mounted && nData && nData.length) {
+                setNotifications(nData.map(mapDbToNotif));
+              }
+            } catch {}
+          })();
         }
       } catch (err) {
         console.error('Failed to load reports from database:', err);
       } finally {
+        // If anything fails before we explicitly unblocked the UI, unblock here.
         if (mounted) setIsLoading(false);
       }
     }

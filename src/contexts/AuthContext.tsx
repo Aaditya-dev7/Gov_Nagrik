@@ -25,8 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const mapProfileToUser = (authUser: any, profile: any): User => {
     const email = String(authUser?.email || '');
     const roleRaw = String(profile?.role || '').toLowerCase();
+    const deptFromProfile = String(profile?.department || '');
+
     const role: User['role'] = roleRaw === 'admin'
-      ? 'Super Admin'
+      ? (deptFromProfile && deptFromProfile !== 'All Departments' ? 'Department Admin' : 'Super Admin')
       : roleRaw === 'officer'
         ? 'Field Officer'
         : roleRaw === 'staff'
@@ -34,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           : 'Viewer';
 
     const dept = (roleRaw === 'admin')
-      ? (profile?.department || 'All Departments')
+      ? (deptFromProfile || 'All Departments')
       : (profile?.department || 'General');
 
     return {
@@ -52,55 +54,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sb = getSupabase();
     if (!sb) {
-      setIsLoading(false);
       setUser(null);
+      setIsLoading(false);
       return;
     }
 
     let cancelled = false;
 
-    const load = async () => {
+    const fetchProfile = async (authUser: any) => {
+      if (!authUser?.id) {
+        setUser(null);
+        return;
+      }
+
       try {
-        const { data } = await sb.auth.getSession();
-        const au = data?.session?.user;
-        if (!au) {
+        const { data: prof, error: profErr } = await sb
+          .from('profiles')
+          .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
+          .eq('id', authUser.id)
+          .maybeSingle();
+
+        if (profErr || !prof) {
+          try { await sb.auth.signOut(); } catch {}
           if (!cancelled) setUser(null);
           return;
         }
 
-        const { data: prof, error: profErr } = await sb
-          .from('profiles')
-          .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
-          .eq('id', au.id)
-          .maybeSingle();
-
-        if (profErr) throw profErr;
-        if (!cancelled) setUser(mapProfileToUser(au, prof));
+        if (!cancelled) setUser(mapProfileToUser(authUser, prof));
       } catch {
+        try { await sb.auth.signOut(); } catch {}
         if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     };
 
-    load();
-
-    const { data: sub } = sb.auth.onAuthStateChange(async (_event, session) => {
-      try {
-        const au = session?.user;
+    // Restore session first; only then fetch profile.
+    setIsLoading(true);
+    sb.auth.getSession()
+      .then(({ data }) => {
+        const au = data?.session?.user;
         if (!au) {
-          setUser(null);
+          if (!cancelled) setUser(null);
           return;
         }
-        const { data: prof } = await sb
-          .from('profiles')
-          .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
-          .eq('id', au.id)
-          .maybeSingle();
-        setUser(mapProfileToUser(au, prof));
-      } catch {
+        return fetchProfile(au);
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      })
+      .finally(() => {
+        // If there is no session, fetchProfile won't run, so stop loading here.
+        // If fetchProfile ran, it already stopped loading in its finally.
+        if (cancelled) return;
+        // Only set false if still loading (prevents double state updates).
+        setIsLoading((prev) => (prev ? false : prev));
+      });
+
+    const { data: sub } = sb.auth.onAuthStateChange(async (event, session) => {
+      if (cancelled) return;
+
+      if (event === 'SIGNED_OUT') {
         setUser(null);
+        setIsLoading(false);
+        return;
       }
+
+      // Handles SIGNED_IN and token refreshes consistently.
+      const au = session?.user;
+      if (!au) {
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      await fetchProfile(au);
     });
 
     return () => {
@@ -151,7 +180,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const mapped = mapProfileToUser(au, prof);
-      if (rolePref && ((rolePref === 'admin' && mapped.role !== 'Super Admin') || (rolePref === 'officer' && mapped.role !== 'Field Officer'))) {
+      const adminAllowed = mapped.role === 'Super Admin' || mapped.role === 'Department Admin';
+      const officerAllowed = mapped.role === 'Field Officer' || mapped.role === 'Staff';
+
+      if (rolePref && ((rolePref === 'admin' && !adminAllowed) || (rolePref === 'officer' && !officerAllowed))) {
         await sb.auth.signOut();
         setUser(null);
         return { success: false, message: 'Your account does not have access for the selected role.' };
