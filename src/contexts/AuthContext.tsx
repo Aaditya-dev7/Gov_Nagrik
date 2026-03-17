@@ -60,14 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false;
+    let initialSessionHandled = false; // Prevent race between getSession and onAuthStateChange
 
     const fetchProfile = async (authUser: any) => {
-      if (!authUser?.id) {
-        setUser(null);
-        return;
-      }
-
       try {
+        if (!authUser?.id) {
+          if (!cancelled) setUser(null);
+          return;
+        }
+
         const { data: prof, error: profErr } = await sb
           .from('profiles')
           .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
@@ -85,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try { await sb.auth.signOut(); } catch {}
         if (!cancelled) setUser(null);
       } finally {
+        // ALWAYS set loading to false - this must run in every code path
         if (!cancelled) setIsLoading(false);
       }
     };
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     sb.auth.getSession()
       .then(({ data }) => {
+        initialSessionHandled = true; // Mark that getSession has handled the initial session
         const au = data?.session?.user;
         if (!au) {
           if (!cancelled) setUser(null);
@@ -101,18 +104,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return fetchProfile(au);
       })
       .catch(() => {
+        initialSessionHandled = true;
         if (!cancelled) setUser(null);
       })
       .finally(() => {
-        // If there is no session, fetchProfile won't run, so stop loading here.
-        // If fetchProfile ran, it already stopped loading in its finally.
-        if (cancelled) return;
-        // Only set false if still loading (prevents double state updates).
-        setIsLoading((prev) => (prev ? false : prev));
+        // ALWAYS set loading to false when session check completes.
+        // This handles the case where there's no session (fetchProfile won't run).
+        if (!cancelled) setIsLoading(false);
       });
 
     const { data: sub } = sb.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
+
+      // Skip the initial SIGNED_IN event if getSession already handled it
+      // This prevents the race condition that causes infinite loading
+      if (event === 'SIGNED_IN' && !initialSessionHandled) {
+        return; // getSession will handle this
+      }
 
       if (event === 'SIGNED_OUT') {
         setUser(null);

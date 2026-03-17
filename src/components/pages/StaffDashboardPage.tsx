@@ -62,7 +62,7 @@ export function StaffDashboardPage() {
         .from('staff_tasks')
         .select('*, report:report_id(*)')
         .eq('staff_user_id', user.id)
-        .order('assigned_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (tasksData) {
         setMyTasks(tasksData as StaffTask[]);

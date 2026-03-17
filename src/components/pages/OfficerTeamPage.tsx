@@ -93,7 +93,7 @@ export function OfficerTeamPage() {
               report:report_id(category, priority, status, submitted_at)
             `)
             .in('staff_user_id', staffIds)
-            .order('assigned_at', { ascending: false });
+            .order('created_at', { ascending: false });
           
           if (tasksData) {
             // Add staff names to tasks
