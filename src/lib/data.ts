@@ -218,6 +218,7 @@ export const govEmailDomains = [
   'nic.in',
   'india.gov.in',
   'nagarpalika.gov.in',
+  'nagrik.gov.in',
   'maha.gov.in',
   'maharashtra.gov.in',
   'comp.sce.edu.in'

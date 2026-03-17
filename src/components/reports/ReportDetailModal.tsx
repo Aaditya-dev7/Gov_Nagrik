@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useReports } from '@/contexts/ReportsContext';
 import { Report } from '@/lib/types';
-import { mockDepartments, mockUsers, formatDate, timeAgo } from '@/lib/data';
+import { formatDate, timeAgo } from '@/lib/data';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,8 +48,16 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const { updateReportStatus, addProgressNote, updateAssignment, deleteReport } = useReports();
   const { toast } = useToast();
   
+  // Officers and departments from database
+  const [officers, setOfficers] = useState<{ id: string; name: string; role: string }[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  
+  // Staff members for assignment (officer's team)
+  const [staffMembers, setStaffMembers] = useState<{ id: string; name: string; department: string }[]>([]);
+  const [selectedStaffId, setSelectedStaffId] = useState<string>('');
+  
   // Error state for catching render errors
-  const [renderError, setRenderError] = useState<Error | null>(null);
+  const [renderError, setRenderError] = useState(null);
   
   const [showRejectionDialog, setShowRejectionDialog] = useState(false);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
@@ -70,6 +78,63 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const [imgCheck, setImgCheck] = useState<{ ok: boolean; score?: number; reason?: string } | null>(null);
   const [revAddr, setRevAddr] = useState<string | null>(null);
   const [inIndia, setInIndia] = useState<boolean | null>(null);
+
+  // Fetch officers and departments from database
+  useEffect(() => {
+    if (!open) return;
+    const sb = getSupabase();
+    if (!sb) return;
+    
+    async function fetchData() {
+      try {
+        // Fetch officers (Field Officers and Department Admins)
+        const { data: officersData } = await sb
+          .from('profiles')
+          .select('id, full_name, role')
+          .in('role', ['Field Officer', 'Department Admin', 'officer', 'admin']);
+        
+        if (officersData) {
+          setOfficers(officersData.map((o: any) => ({
+            id: o.id,
+            name: o.full_name || 'Unknown',
+            role: o.role,
+          })));
+        }
+        
+        // Fetch staff members if current user is an officer
+        if (user?.id && !isAdmin) {
+          const { data: staffData } = await sb
+            .from('profiles')
+            .select('id, full_name, department')
+            .eq('reports_to_officer_id', user.id)
+            .eq('role', 'Staff');
+          
+          if (staffData) {
+            setStaffMembers(staffData.map((s: any) => ({
+              id: s.id,
+              name: s.full_name || 'Unknown',
+              department: s.department || 'Unassigned',
+            })));
+          }
+        }
+        
+        // Fetch unique departments from reports
+        const { data: reportsData } = await sb
+          .from('reports')
+          .select('assigned_department')
+          .not('assigned_department', 'is', null);
+        
+        if (reportsData) {
+          const uniqueDepts = [...new Set(reportsData.map((r: any) => r.assigned_department).filter(Boolean))];
+          setDepartments(uniqueDepts.sort());
+        }
+      } catch (err) {
+        console.error('Failed to fetch officers/departments:', err);
+      }
+    }
+    
+    fetchData();
+  }, [open]);
 
   useEffect(() => {
     if (!open || !report) return;
@@ -584,8 +649,8 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {mockDepartments.map(dept => (
-                          <SelectItem key={dept.id} value={dept.name}>{dept.name}</SelectItem>
+                        {departments.map(dept => (
+                          <SelectItem key={dept} value={dept}>{dept}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -597,7 +662,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                         updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
                         toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
                       } else {
-                        const officer = mockUsers.find(o => o.id === val);
+                        const officer = officers.find(o => o.id === val);
                         updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
                         toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
                       }
@@ -607,7 +672,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">Unassigned</SelectItem>
-                        {mockUsers.filter(u => u.role === 'Field Officer' || u.role === 'Department Admin').map(officer => (
+                        {officers.map(officer => (
                           <SelectItem key={officer.id} value={officer.id}>{officer.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -625,6 +690,54 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                     <div className="mt-1 text-sm p-2 rounded border bg-muted/30">{report.assigned_officer_name || 'Unassigned'}</div>
                   </div>
                   <p className="text-xs text-muted-foreground">Assignment is locked for Officers.</p>
+                </div>
+              )}
+              
+              {/* Assign to Staff - Only for assigned officers */}
+              {isAssignedToCurrentUser && staffMembers.length > 0 && (
+                <div className="space-y-2 mt-4 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                  <h5 className="font-medium text-sm">Assign to Staff Member</h5>
+                  <p className="text-xs text-muted-foreground">Delegate this report to a staff member on your team.</p>
+                  <Select value={selectedStaffId} onValueChange={setSelectedStaffId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select staff member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {staffMembers.map(staff => (
+                        <SelectItem key={staff.id} value={staff.id}>
+                          {staff.name} ({staff.department})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    size="sm" 
+                    className="w-full mt-2"
+                    disabled={!selectedStaffId}
+                    onClick={async () => {
+                      const sb = getSupabase();
+                      if (!sb || !selectedStaffId) return;
+                      
+                      const staff = staffMembers.find(s => s.id === selectedStaffId);
+                      
+                      const { error } = await sb.from('staff_tasks').insert({
+                        report_id: report.report_id,
+                        staff_user_id: selectedStaffId,
+                        assigned_by_officer_id: user?.id,
+                        status: 'assigned',
+                        assigned_at: new Date().toISOString(),
+                      });
+                      
+                      if (error) {
+                        toast({ title: 'Error', description: error.message, variant: 'destructive' });
+                      } else {
+                        toast({ title: 'Success', description: `Report assigned to ${staff?.name}` });
+                        setSelectedStaffId('');
+                      }
+                    }}
+                  >
+                    Assign to Staff
+                  </Button>
                 </div>
               )}
             </div>

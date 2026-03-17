@@ -70,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const { data: prof, error: profErr } = await sb
           .from('profiles')
-          .select('id, full_name, role, department')
+          .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
           .eq('id', au.id)
           .maybeSingle();
 
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         const { data: prof } = await sb
           .from('profiles')
-          .select('id, full_name, role, department')
+          .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
           .eq('id', au.id)
           .maybeSingle();
         setUser(mapProfileToUser(au, prof));
@@ -142,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const { data: prof, error: profErr } = await sb
         .from('profiles')
-        .select('id, full_name, role, department')
+        .select('id, full_name, role, department, reports_to_officer_id, reports_to_officer_name')
         .eq('id', au.id)
         .maybeSingle();
 

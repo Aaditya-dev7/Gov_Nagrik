@@ -151,12 +151,13 @@ export function StaffDashboardPage() {
         }
       }
 
-      // Update task status
+      // Update task status with resolution details
+      const completedAt = new Date().toISOString();
       const { error: updateErr } = await sb
         .from('staff_tasks')
         .update({
           status: 'completed',
-          completed_at: new Date().toISOString(),
+          completed_at: completedAt,
           notes: uploadNotes,
           documents: uploadedDocs,
         })
@@ -164,11 +165,62 @@ export function StaffDashboardPage() {
 
       if (updateErr) throw updateErr;
 
-      // Update report status to resolved
+      // Update report status to resolved with resolution details
+      const reportUpdate: any = {
+        status: 'Resolved',
+        resolved_at: completedAt,
+        resolved_by: user.id,
+        resolution_note: uploadNotes,
+        resolution_documents: uploadedDocs,
+      };
+      
       await sb
         .from('reports')
-        .update({ status: 'Resolved' })
+        .update(reportUpdate)
         .eq('report_id', selectedTask.report_id);
+
+      // Add timeline entry for resolution
+      await sb.from('report_timeline').insert({
+        report_id: selectedTask.report_id,
+        actor: `Staff: ${user.name}`,
+        action: `Marked as Resolved - ${uploadNotes}`,
+        at: completedAt,
+      });
+
+      // Create notification for supervising officer
+      if (user.reports_to_officer_id) {
+        await sb.from('notifications').insert({
+          id: `notif-${Date.now()}-officer`,
+          message: `Staff ${user.name} resolved report ${selectedTask.report_id}`,
+          timestamp: completedAt,
+          read: false,
+          report_id: selectedTask.report_id,
+          recipient_role: 'officer',
+          recipient_user_id: user.reports_to_officer_id,
+          type: 'resolution',
+          actor: user.name,
+        });
+      }
+
+      // Create notification for admin
+      await sb.from('notifications').insert({
+        id: `notif-${Date.now()}-admin`,
+        message: `Report ${selectedTask.report_id} resolved by ${user.name} (Staff)`,
+        timestamp: completedAt,
+        read: false,
+        report_id: selectedTask.report_id,
+        recipient_role: 'admin',
+        recipient_user_id: null,
+        type: 'resolution',
+        actor: user.name,
+        meta: JSON.stringify({
+          staff_id: user.id,
+          staff_name: user.name,
+          department: department,
+          has_proof: uploadedDocs.length > 0,
+          notes: uploadNotes,
+        }),
+      });
 
       toast({
         title: 'Task Completed',

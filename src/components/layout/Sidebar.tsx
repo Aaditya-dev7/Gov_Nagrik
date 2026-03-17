@@ -14,7 +14,9 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronLeft
+  ChevronLeft,
+  UsersRound,
+  UserPlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -23,9 +25,19 @@ interface SidebarProps {
   onNavigate: (page: string) => void;
 }
 
-const navItems = [
+const navItems: Array<{
+  id: string;
+  label: string;
+  icon: any;
+  adminOnly?: boolean;
+  officerOnly?: boolean;
+  officerAdminOnly?: boolean;
+  badge?: string | number;
+}> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'my-team', label: 'My Team', icon: UsersRound, officerOnly: true },
+  { id: 'nss-registrations', label: 'NSS Volunteers', icon: UserPlus, officerAdminOnly: true },
   { id: 'officers', label: 'Officers', icon: Users, adminOnly: true },
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'departments', label: 'Departments', icon: Building2, adminOnly: true },
@@ -34,6 +46,8 @@ const navItems = [
 
 export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const { user, logout, isAdmin } = useAuth();
+  const isOfficer = user?.role === 'Field Officer';
+  const isStaff = user?.role === 'Staff';
   const _lang = useLang();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -43,9 +57,16 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     setIsMobileOpen(false);
   };
 
-  const filteredNavItems = isAdmin
-    ? navItems
-    : navItems.filter(item => ['dashboard', 'reports'].includes(item.id));
+  const filteredNavItems = navItems.filter(item => {
+    if (item.adminOnly && !isAdmin) return false;
+    if (item.officerOnly && !isOfficer) return false;
+    if (item.officerAdminOnly && !isAdmin && !isOfficer) return false;
+    // Staff can see dashboard, reports, and settings
+    if (isStaff && !['dashboard', 'reports', 'settings'].includes(item.id)) return false;
+    // Non-admin, non-officer, non-staff can only see basic items
+    if (!isAdmin && !isOfficer && !isStaff && !['dashboard', 'reports', 'settings'].includes(item.id)) return false;
+    return true;
+  });
 
   return (
     <>

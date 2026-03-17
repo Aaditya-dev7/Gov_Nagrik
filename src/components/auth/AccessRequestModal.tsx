@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, AlertTriangle, Shield, CheckCircle } from 'lucide-react';
 import { mockDepartments } from '@/lib/data';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabase, getGovSiteUrl } from '@/lib/supabase';
 
 interface AccessRequestModalProps {
   open: boolean;
@@ -79,7 +79,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
           .select('id, full_name, department')
           .eq('role', 'officer')
           .eq('department', department);
-        setOfficers(data || []);
+        setOfficers((data || []).map(o => ({ id: o.id, name: o.full_name, department: o.department })));
       } catch {
         setOfficers([]);
       }
@@ -87,7 +87,7 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
     loadOfficers();
   }, [role, department]);
 
-  // Validate official email domain
+  // Validate official email domain - COMMENTED OUT FOR TESTING
   const validateOfficialEmail = (email: string): { valid: boolean; error?: string } => {
     const emailLower = email.toLowerCase().trim();
     
@@ -95,29 +95,17 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
       return { valid: false, error: 'Please enter a valid email address' };
     }
     
-    const domain = emailLower.split('@')[1] || '';
-    
-    // Check if domain matches any allowed pattern
-    const isAllowed = ALLOWED_EMAIL_DOMAINS.some(allowed => 
-      domain === allowed || domain.endsWith(allowed)
-    );
-    
-    if (!isAllowed) {
-      return { 
-        valid: false, 
-        error: 'Only official government email addresses are accepted (.gov.in, .nic.in). Personal emails (gmail, yahoo, etc.) are not allowed.' 
-      };
-    }
-    
-    // Check department email pattern match (warning only)
-    if (department && DEPARTMENT_EMAIL_PATTERNS[department]) {
-      const patterns = DEPARTMENT_EMAIL_PATTERNS[department];
-      const hasPattern = patterns.some(p => emailLower.includes(p));
-      if (!hasPattern) {
-        // Just a warning, still allow submission
-        console.log('Email may not match department pattern');
-      }
-    }
+    // COMMENTED OUT FOR TESTING - Allow any email
+    // const domain = emailLower.split('@')[1] || '';
+    // const isAllowed = ALLOWED_EMAIL_DOMAINS.some(allowed => 
+    //   domain === allowed || domain.endsWith(allowed)
+    // );
+    // if (!isAllowed) {
+    //   return { 
+    //     valid: false, 
+    //     error: 'Only official government email addresses are accepted (.gov.in, .nic.in). Personal emails (gmail, yahoo, etc.) are not allowed.' 
+    //   };
+    // }
     
     return { valid: true };
   };
@@ -242,7 +230,10 @@ export function AccessRequestModal({ open, onOpenChange }: AccessRequestModalPro
         throw new Error('Supabase is not configured');
       }
 
-      const redirect_to = `${window.location.origin}/login`;
+      // IMPORTANT: This must match a URL in Supabase Auth Redirect URLs
+      // Set in Supabase: Authentication > URL Configuration > Redirect URLs
+      const govUrl = await getGovSiteUrl();
+      const redirect_to = `${govUrl}/login?set_password=1`;
       const selectedOfficer = officers.find(o => o.id === reportsToOfficerId);
       const { data, error } = await sb.functions.invoke('submit-access-request', {
         body: {

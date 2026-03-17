@@ -27,9 +27,10 @@ interface ReportsPageProps {
   onOpenReport: (reportId: string) => void;
   assignedOnlyUserId?: string | null;
   presetFilters?: { status?: string[]; priority?: string[] } | null;
+  staffDepartment?: string;
 }
 
-export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters }: ReportsPageProps) {
+export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, presetFilters, staffDepartment }: ReportsPageProps) {
   const { reports } = useReports();
   const _lang = useLang();
   const [viewMode, setViewMode] = useState<'table' | 'card'>('card');
@@ -48,7 +49,17 @@ export function ReportsPage({ searchQuery, onOpenReport, assignedOnlyUserId, pre
   }, [JSON.stringify(presetFilters)]);
 
   const filteredReports = useMemo(() => {
-    let result = assignedOnlyUserId ? reports.filter(r => r.assigned_officer_id === assignedOnlyUserId) : [...reports];
+    let result = [...reports];
+    
+    // Staff can only see reports from their department
+    if (staffDepartment) {
+      result = result.filter(r => r.assigned_department === staffDepartment);
+    }
+    
+    // Officer assigned filter
+    if (assignedOnlyUserId) {
+      result = result.filter(r => r.assigned_officer_id === assignedOnlyUserId);
+    }
 
     // Search filter
     if (searchQuery) {

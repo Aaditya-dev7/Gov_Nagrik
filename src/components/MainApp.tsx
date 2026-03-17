@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils';
 import { MobileBottomNav } from './layout/MobileBottomNav';
 import { OfficersPage } from './pages/OfficersPage';
 import { StaffDashboardPage } from './pages/StaffDashboardPage';
+import { OfficerTeamPage } from './pages/OfficerTeamPage';
+import { NSSRegistrationsPage } from './pages/NSSRegistrationsPage';
 import { t, useLang } from '@/lib/i18n';
 
 export function MainApp() {
@@ -145,8 +147,13 @@ export function MainApp() {
   };
 
   const renderPage = () => {
-    // Staff has their own dashboard
-    if (isStaff || currentPage === 'staff-dashboard') {
+    // Staff has their own dashboard as landing page
+    if (isStaff && currentPage === 'dashboard') {
+      return <StaffDashboardPage />;
+    }
+    
+    // Staff can also access staff-dashboard explicitly
+    if (currentPage === 'staff-dashboard') {
       return <StaffDashboardPage />;
     }
 
@@ -168,6 +175,7 @@ export function MainApp() {
             onOpenReport={handleOpenReport}
             assignedOnlyUserId={assignedOnlyUserId}
             presetFilters={reportsPresetFilters}
+            staffDepartment={isStaff ? user?.department : undefined}
           />
         );
       case 'users':
@@ -176,6 +184,10 @@ export function MainApp() {
         return isAdmin ? <DepartmentsPage /> : null;
       case 'officers':
         return isAdmin ? <OfficersPage /> : null;
+      case 'nss-registrations':
+        return (isAdmin || user?.role === 'Field Officer') ? <NSSRegistrationsPage /> : null;
+      case 'my-team':
+        return <OfficerTeamPage />;
       case 'settings':
         return <SettingsPage />;
       case 'profile':

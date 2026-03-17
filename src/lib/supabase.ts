@@ -27,3 +27,23 @@ export function getSupabase(): SupabaseClient | null {
   }
   return client
 }
+
+// Fetch config value from citizen_config table
+export async function getConfig(key: string): Promise<string | null> {
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data, error } = await sb
+    .from('citizen_config')
+    .select('value')
+    .eq('key', key)
+    .maybeSingle()
+  if (error || !data) return null
+  return data.value
+}
+
+// Get the gov/admin site URL for redirects
+export async function getGovSiteUrl(): Promise<string> {
+  const configUrl = await getConfig('GOV_SITE_URL')
+  if (configUrl) return configUrl
+  return window.location.origin
+}

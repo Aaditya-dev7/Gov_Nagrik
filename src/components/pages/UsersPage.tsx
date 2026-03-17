@@ -1,5 +1,4 @@
-import React from 'react';
-import { mockUsers, mockDepartments } from '@/lib/data';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,13 +12,52 @@ import { User } from '@/lib/types';
 
 export function UsersPage() {
   const { toast } = useToast();
-  const [query, setQuery] = React.useState('');
-  const [overrides, setOverrides] = React.useState<Record<string, Partial<User>>>({});
-  const [editOpen, setEditOpen] = React.useState(false);
-  const [editUserEmail, setEditUserEmail] = React.useState('');
-  const [editRole, setEditRole] = React.useState<User['role']>('Viewer');
-  const [editDept, setEditDept] = React.useState('General');
-  const [editStatus, setEditStatus] = React.useState<'Active' | 'Inactive'>('Active');
+  const [query, setQuery] = useState('');
+  const [users, setUsers] = useState<User[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editUserId, setEditUserId] = useState('');
+  const [editRole, setEditRole] = useState<User['role']>('Viewer');
+  const [editDept, setEditDept] = useState('General');
+  const [editStatus, setEditStatus] = useState<'Active' | 'Inactive'>('Active');
+
+  // Fetch users and departments from database
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb) return;
+    
+    async function fetchData() {
+      try {
+        const [usersRes, deptsRes] = await Promise.all([
+          sb.from('profiles').select('id, full_name, email, role, department, status'),
+          sb.from('reports').select('assigned_department').not('assigned_department', 'is', null)
+        ]);
+        
+        if (usersRes.data) {
+          setUsers(usersRes.data.map((p: any) => ({
+            id: p.id,
+            name: p.full_name || 'Unknown',
+            email: p.email || '',
+            role: p.role === 'admin' ? 'Super Admin' : p.role === 'officer' ? 'Field Officer' : p.role || 'Viewer',
+            department: p.department || 'General',
+            status: p.status || 'Active',
+          })));
+        }
+        
+        if (deptsRes.data) {
+          const uniqueDepts = [...new Set(deptsRes.data.map((r: any) => r.assigned_department).filter(Boolean))];
+          setDepartments(uniqueDepts.sort());
+        }
+      } catch (err) {
+        console.error('Failed to fetch users:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    
+    fetchData();
+  }, []);
 
   const handleAddUser = () => {
     toast({
@@ -33,30 +71,25 @@ export function UsersPage() {
       case 'Super Admin': return 'bg-primary text-primary-foreground';
       case 'Department Admin': return 'bg-info text-foreground';
       case 'Field Officer': return 'bg-success text-success-foreground';
+      case 'Staff': return 'bg-blue-500 text-white';
       case 'Viewer': return 'bg-secondary text-secondary-foreground';
       default: return 'bg-secondary text-secondary-foreground';
     }
   };
 
-  React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem('nagrikGPT_user_overrides');
-      if (raw) setOverrides(JSON.parse(raw));
-    } catch {}
-  }, []);
-
   const displayUsers = React.useMemo(() => {
-    const list = mockUsers.map(u => {
-      const ov = overrides[u.email] || {};
-      return { ...u, ...ov } as User;
-    });
     const q = query.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || u.department.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
-  }, [overrides, query]);
+    if (!q) return users;
+    return users.filter(u => 
+      u.name.toLowerCase().includes(q) || 
+      u.email.toLowerCase().includes(q) || 
+      u.department.toLowerCase().includes(q) || 
+      u.role.toLowerCase().includes(q)
+    );
+  }, [users, query]);
 
   const openEdit = (user: User) => {
-    setEditUserEmail(user.email);
+    setEditUserId(user.id);
     setEditRole(user.role as User['role']);
     setEditDept(user.department || 'General');
     setEditStatus((user.status as any) || 'Active');
@@ -64,24 +97,32 @@ export function UsersPage() {
   };
 
   const saveEdit = async () => {
-    const next = { ...overrides, [editUserEmail]: { role: editRole, department: editDept, status: editStatus } };
-    setOverrides(next);
-    try { localStorage.setItem('nagrikGPT_user_overrides', JSON.stringify(next)); } catch {}
     const sb = getSupabase();
     if (sb) {
       try {
-        const base = mockUsers.find(u => u.email === editUserEmail) as User | undefined;
-        await sb.from('users').upsert({
-          id: base?.id || undefined,
-          name: base?.name || editUserEmail.split('@')[0],
-          email: editUserEmail,
-          role: editRole,
-          department: editDept,
-          status: editStatus,
-        }, { onConflict: 'email' } as any);
-      } catch {}
+        const { error } = await sb
+          .from('profiles')
+          .update({
+            role: editRole === 'Super Admin' ? 'admin' : editRole === 'Field Officer' ? 'officer' : editRole.toLowerCase(),
+            department: editDept,
+            status: editStatus,
+          })
+          .eq('id', editUserId);
+        
+        if (error) throw error;
+        
+        // Update local state
+        setUsers(prev => prev.map(u => 
+          u.id === editUserId 
+            ? { ...u, role: editRole, department: editDept, status: editStatus }
+            : u
+        ));
+        
+        toast({ title: 'User updated', description: 'Changes saved.' });
+      } catch (err) {
+        toast({ title: 'Error', description: 'Failed to update user.', variant: 'destructive' });
+      }
     }
-    toast({ title: 'User updated', description: 'Changes saved.' });
     setEditOpen(false);
   };
 
@@ -178,8 +219,8 @@ export function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All Departments">All Departments</SelectItem>
-                  {mockDepartments.map(d => (
-                    <SelectItem key={d.id} value={d.name}>{d.name}</SelectItem>
+                  {departments.map(d => (
+                    <SelectItem key={d} value={d}>{d}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

@@ -9,7 +9,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Mail, Lock, Eye, EyeOff, Shield, Zap, Globe, Loader2 } from 'lucide-react';
 import { AccessRequestModal } from './AccessRequestModal';
 import { SetPasswordModal } from './SetPasswordModal';
-import { mockUsers } from '@/lib/data';
 import { getSupabase } from '@/lib/supabase';
 
 export function LoginPage() {
@@ -107,33 +106,26 @@ export function LoginPage() {
       }
     } catch {}
 
-    // 2) Then check mock users
+    // 2) Check database profiles table for role
     if (!role) {
-      const m = mockUsers.find(u => (u.email || '').toLowerCase() === emailTrim);
-      if (m) {
-        const r = String((m as any).role || '').toLowerCase();
-        if (r.includes('admin')) role = 'admin';
-        else if (r.includes('officer')) role = 'officer';
-        dept = (m as any).department;
+      const sb = getSupabase();
+      if (sb) {
+        sb.from('profiles')
+          .select('role, department')
+          .eq('email', emailTrim)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data) {
+              const r = String(data.role || '').toLowerCase();
+              if (r.includes('admin')) setRoleInfo({ kind: 'admin', department: data.department });
+              else if (r.includes('officer')) setRoleInfo({ kind: 'officer', department: data.department });
+              else if (r === 'staff') setRoleInfo({ kind: 'officer', department: data.department });
+            }
+          });
       }
+      return; // Exit early, role will be set via async call
     }
 
-    // 3) Lastly, check cached dynamic users
-    if (!role) {
-      try {
-        const dynRaw = localStorage.getItem('nagrikGPT_dynusers');
-        if (dynRaw) {
-          const dyn = JSON.parse(dynRaw) as any[];
-          const du = dyn.find(u => (u.email || '').toLowerCase() === emailTrim);
-          if (du) {
-            const r = String(du.role || '').toLowerCase();
-            if (r.includes('admin')) role = 'admin';
-            else if (r.includes('officer')) role = 'officer';
-            dept = du.department || dept;
-          }
-        }
-      } catch {}
-    }
     if (role) setRoleInfo({ kind: role, department: dept }); else setRoleInfo(null);
   }, [email]);
 

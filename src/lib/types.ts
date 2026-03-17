@@ -10,6 +10,38 @@ export interface User {
   // For staff: which officer they report to
   reports_to_officer_id?: string | null;
   reports_to_officer_name?: string | null;
+  // NSS volunteer info
+  is_nss_volunteer?: boolean;
+  nss_registration_status?: 'pending' | 'approved' | 'rejected' | null;
+  // Badge info
+  badges?: Badge[];
+  total_points?: number;
+}
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  earned_at?: string;
+  points: number;
+  category: 'reporting' | 'resolution' | 'community' | 'special';
+}
+
+export interface NSSRegistration {
+  id: string;
+  user_id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  college: string;
+  nss_unit: string;
+  department_preference: string;
+  status: 'pending' | 'approved' | 'rejected';
+  applied_at: string;
+  reviewed_at?: string;
+  reviewed_by?: string;
+  rejection_reason?: string;
 }
 
 export interface Department {

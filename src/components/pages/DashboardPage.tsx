@@ -15,7 +15,11 @@ import {
   CheckCircle2, 
   AlertTriangle,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  Calendar,
+  FileCheck,
+  User,
+  Building2
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -36,6 +40,17 @@ const statCards = [
 
 const filterChips = ['all', 'Pending', 'In Progress', 'Resolved', 'Urgent'];
 
+// Get deadline days based on priority
+const getDeadlineDays = (priority: string): number => {
+  switch (priority) {
+    case 'Low': return 15;
+    case 'Medium': return 10;
+    case 'High': return 7;
+    case 'Urgent': return 3;
+    default: return 10;
+  }
+};
+
 export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllAssigned, onNavigateToReportsFiltered }: DashboardPageProps) {
   const { user, isAdmin } = useAuth();
   const { reports, notifications, requestAssignment } = useReports();
@@ -43,6 +58,60 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
   
   // Database stats state
   const [dbStats, setDbStats] = useState<{ total: number; pending: number; inProgress: number; resolved: number; urgent: number } | null>(null);
+  
+  // Recently resolved reports with details
+  const [recentlyResolved, setRecentlyResolved] = useState<any[]>([]);
+
+  // Fetch recently resolved reports with resolution details
+  useEffect(() => {
+    const sb = getSupabase();
+    if (!sb || !isAdmin) return;
+    
+    async function fetchRecentlyResolved() {
+      try {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(); // Last 7 days
+        
+        const { data, error } = await sb
+          .from('reports')
+          .select('id, report_id, category, priority, submitted_at, resolved_at, resolved_by, resolution_note, resolution_documents, assigned_department')
+          .eq('status', 'Resolved')
+          .gte('resolved_at', cutoff)
+          .order('resolved_at', { ascending: false })
+          .limit(10);
+        
+        if (error) throw error;
+        
+        // Get staff names for resolved_by
+        if (data && data.length > 0) {
+          const resolvedByIds = data.map(r => r.resolved_by).filter(Boolean);
+          if (resolvedByIds.length > 0) {
+            const { data: profiles } = await sb
+              .from('profiles')
+              .select('id, full_name, role')
+              .in('id', resolvedByIds);
+            
+            const profileMap = new Map((profiles || []).map(p => [p.id, p]));
+            
+            const resolvedWithStaff = data.map(r => ({
+              ...r,
+              resolved_by_name: profileMap.get(r.resolved_by)?.full_name || 'Unknown',
+              resolved_by_role: profileMap.get(r.resolved_by)?.role || 'Unknown',
+            }));
+            
+            setRecentlyResolved(resolvedWithStaff);
+          } else {
+            setRecentlyResolved(data);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch recently resolved:', err);
+      }
+    }
+    
+    fetchRecentlyResolved();
+    const interval = setInterval(fetchRecentlyResolved, 60000); // Refresh every minute
+    return () => clearInterval(interval);
+  }, [isAdmin]);
 
   // Fetch stats from database
   useEffect(() => {
@@ -293,6 +362,144 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
           </CardContent>
         </Card>
       </div>
+
+      {/* Recently Resolved - Admin Only */}
+      {isAdmin && recentlyResolved.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-success" />
+                Recently Resolved (Last 7 Days)
+              </CardTitle>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary"
+                onClick={() => onNavigateToReportsFiltered('Resolved')}
+              >
+                View All
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {recentlyResolved.map((report) => {
+                // Calculate deadline
+                const submittedMs = new Date(report.submitted_at).getTime();
+                const deadlineDays = getDeadlineDays(report.priority);
+                const deadlineMs = submittedMs + deadlineDays * 24 * 60 * 60 * 1000;
+                const resolvedMs = new Date(report.resolved_at).getTime();
+                const wasOnTime = resolvedMs <= deadlineMs;
+                const deadlineDate = new Date(deadlineMs).toLocaleDateString();
+                
+                // Parse resolution documents
+                const docs = report.resolution_documents || [];
+                const hasProof = docs.length > 0;
+                
+                return (
+                  <button
+                    key={report.report_id}
+                    onClick={() => onOpenReport(report.report_id)}
+                    className="w-full text-left p-4 rounded-lg border bg-success-light/30 hover:bg-success-light/50 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-medium text-primary">
+                          {report.report_id}
+                        </span>
+                        <Badge variant="secondary">{report.category}</Badge>
+                      </div>
+                      <Badge className={getPriorityColor(report.priority)}>
+                        {report.priority}
+                      </Badge>
+                    </div>
+                    
+                    {/* Resolution Details Grid */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3 text-sm">
+                      {/* Resolved By */}
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Resolved by</div>
+                          <div className="font-medium">{report.resolved_by_name || 'Unknown'}</div>
+                          <div className="text-xs text-muted-foreground capitalize">({report.resolved_by_role})</div>
+                        </div>
+                      </div>
+                      
+                      {/* Department */}
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Department</div>
+                          <div className="font-medium">{report.assigned_department || 'Unassigned'}</div>
+                        </div>
+                      </div>
+                      
+                      {/* Deadline Status */}
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Deadline</div>
+                          <div className={`font-medium ${wasOnTime ? 'text-success' : 'text-destructive'}`}>
+                            {deadlineDate}
+                            {!wasOnTime && <span className="text-xs ml-1">(Late)</span>}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Proof Status */}
+                      <div className="flex items-center gap-2">
+                        <FileCheck className={`w-4 h-4 ${hasProof ? 'text-success' : 'text-muted-foreground'}`} />
+                        <div>
+                          <div className="text-xs text-muted-foreground">Proof</div>
+                          <div className={`font-medium ${hasProof ? 'text-success' : 'text-warning'}`}>
+                            {hasProof ? `${docs.length} doc(s)` : 'No docs'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Resolution Note */}
+                    {report.resolution_note && (
+                      <div className="mt-3 p-2 bg-muted/50 rounded text-sm">
+                        <div className="text-xs text-muted-foreground mb-1">Resolution Note:</div>
+                        <div className="line-clamp-2">{report.resolution_note}</div>
+                      </div>
+                    )}
+                    
+                    {/* Proof Documents */}
+                    {hasProof && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {docs.slice(0, 3).map((doc: any, idx: number) => (
+                          <a
+                            key={idx}
+                            href={doc.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded text-xs hover:bg-primary/20"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            {doc.name || `Doc ${idx + 1}`}
+                          </a>
+                        ))}
+                        {docs.length > 3 && (
+                          <span className="text-xs text-muted-foreground">+{docs.length - 3} more</span>
+                        )}
+                      </div>
+                    )}
+                    
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Resolved {timeAgo(report.resolved_at)}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

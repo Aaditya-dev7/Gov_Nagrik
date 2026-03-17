@@ -21,4 +21,11 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+
+  // Mock mode entry point
+  ...(mode === "mock" && {
+    define: {
+      'import.meta.env.VITE_MOCK_MODE': JSON.stringify('true'),
+    },
+  }),
 }));
