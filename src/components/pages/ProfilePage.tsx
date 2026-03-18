@@ -496,6 +496,7 @@ export function ProfilePage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       <div className="flex justify-end">
         <Button variant="outline" onClick={logout}>
