@@ -6,29 +6,25 @@ export interface ProfanityResult {
   severity: 'none' | 'medium' | 'high';
 }
 
-// Flatten all profanity words into a single array with severity info
-const allProfanityWords: Map<string, 'high' | 'medium'> = new Map();
+// Create Sets for O(1) lookup instead of massive regex
+const highSeveritySet = new Set<string>();
+const mediumSeveritySet = new Set<string>();
 
-// Process high severity words
-(profanityData as any).high_severity.forEach((word: string) => {
-  allProfanityWords.set(word.toLowerCase(), 'high');
-});
-
-// Process medium severity words  
-(profanityData as any).medium_severity.forEach((word: string) => {
-  allProfanityWords.set(word.toLowerCase(), 'medium');
-});
-
-// Create regex pattern for matching
-const profanityPattern = new RegExp(
-  Array.from(allProfanityWords.keys())
-    .map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|'),
-  'gi'
-);
+// Populate sets once on module load
+const data = profanityData as any;
+if (data?.high_severity) {
+  data.high_severity.forEach((word: string) => {
+    highSeveritySet.add(word.toLowerCase());
+  });
+}
+if (data?.medium_severity) {
+  data.medium_severity.forEach((word: string) => {
+    mediumSeveritySet.add(word.toLowerCase());
+  });
+}
 
 /**
- * Check text for profanity
+ * Check text for profanity - efficient word-by-word check
  * @param text - The text to check
  * @returns ProfanityResult with hasProfanity, matchedWords, and severity
  */
@@ -38,59 +34,60 @@ export function checkProfanity(text: string): ProfanityResult {
   }
 
   const lowerText = text.toLowerCase();
-  const matchedWords: string[] = [];
+  const matchedWords: Set<string> = new Set();
   let maxSeverity: 'none' | 'medium' | 'high' = 'none';
 
-  // Find all matches
+  // Split text into words and check each one
   const words = lowerText.split(/\s+/);
   
   for (const word of words) {
     // Remove punctuation from word edges
     const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '');
     
-    if (allProfanityWords.has(cleanWord)) {
-      const severity = allProfanityWords.get(cleanWord)!;
-      matchedWords.push(cleanWord);
-      if (severity === 'high') {
-        maxSeverity = 'high';
-      } else if (maxSeverity !== 'high') {
+    if (!cleanWord || cleanWord.length < 2) continue;
+    
+    // Check exact match in high severity
+    if (highSeveritySet.has(cleanWord)) {
+      matchedWords.add(cleanWord);
+      maxSeverity = 'high';
+      continue;
+    }
+    
+    // Check exact match in medium severity
+    if (mediumSeveritySet.has(cleanWord)) {
+      matchedWords.add(cleanWord);
+      if (maxSeverity !== 'high') {
         maxSeverity = 'medium';
+      }
+      continue;
+    }
+    
+    // Check if word contains any profane word (for obfuscated/leetspeak)
+    // Only check shorter profanity words to avoid false positives
+    for (const profaneWord of highSeveritySet) {
+      if (profaneWord.length >= 3 && cleanWord.includes(profaneWord)) {
+        matchedWords.add(profaneWord);
+        maxSeverity = 'high';
+        break;
       }
     }
     
-    // Also check for partial matches within the word (for obfuscated words)
-    for (const [profaneWord, severity] of allProfanityWords.entries()) {
-      if (cleanWord.includes(profaneWord) && !matchedWords.includes(profaneWord)) {
-        matchedWords.push(profaneWord);
-        if (severity === 'high') {
-          maxSeverity = 'high';
-        } else if (maxSeverity !== 'high') {
-          maxSeverity = 'medium';
-        }
-      }
-    }
-  }
-
-  // Also use regex for additional pattern matching
-  const regexMatches = lowerText.match(profanityPattern);
-  if (regexMatches) {
-    for (const match of regexMatches) {
-      const cleanMatch = match.toLowerCase();
-      if (!matchedWords.includes(cleanMatch)) {
-        matchedWords.push(cleanMatch);
-        const severity = allProfanityWords.get(cleanMatch);
-        if (severity === 'high') {
-          maxSeverity = 'high';
-        } else if (maxSeverity !== 'high') {
-          maxSeverity = 'medium';
+    if (maxSeverity !== 'high') {
+      for (const profaneWord of mediumSeveritySet) {
+        if (profaneWord.length >= 4 && cleanWord.includes(profaneWord)) {
+          matchedWords.add(profaneWord);
+          if (maxSeverity !== 'high') {
+            maxSeverity = 'medium';
+          }
+          break;
         }
       }
     }
   }
 
   return {
-    hasProfanity: matchedWords.length > 0,
-    matchedWords: [...new Set(matchedWords)], // Remove duplicates
+    hasProfanity: matchedWords.size > 0,
+    matchedWords: Array.from(matchedWords),
     severity: maxSeverity
   };
 }

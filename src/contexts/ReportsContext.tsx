@@ -625,28 +625,39 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       // Supabase insert if available
       const sb = getSupabase();
       if (sb) {
-        const row = {
-          id: newReport.report_id,
-          category: newReport.category,
-          description: newReport.description,
-          summary: newReport.summary,
-          priority: newReport.priority,
-          status: newReport.status,
-          submitted_at: newReport.submitted_at,
-          deadline: newReport.deadline ?? null,
-          location_text: newReport.location_text,
-          lat: newReport.lat,
-          lng: newReport.lng,
-          reporter_name: newReport.reporter.name,
-          reporter_phone: newReport.reporter.phone,
-          anonymous: newReport.reporter.anonymous,
-          assigned_department: newReport.assigned_department,
-          assigned_officer_id: newReport.assigned_officer_id,
-          assigned_officer_name: newReport.assigned_officer_name,
-        } as Record<string, any>;
-        sb.from('reports').insert(row);
-        sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'System', action: 'Report created', at: newReport.submitted_at });
-        sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
+        try {
+          const row = {
+            id: newReport.report_id,
+            category: newReport.category,
+            description: newReport.description,
+            summary: newReport.summary,
+            priority: newReport.priority,
+            status: newReport.status,
+            submitted_at: newReport.submitted_at,
+            deadline: newReport.deadline ?? null,
+            location_text: newReport.location_text,
+            lat: newReport.lat,
+            lng: newReport.lng,
+            reporter_name: newReport.reporter.name,
+            reporter_phone: newReport.reporter.phone,
+            anonymous: newReport.reporter.anonymous,
+            assigned_department: newReport.assigned_department,
+            assigned_officer_id: newReport.assigned_officer_id,
+            assigned_officer_name: newReport.assigned_officer_name,
+          } as Record<string, any>;
+          
+          const { error: reportError } = await sb.from('reports').insert(row);
+          if (reportError) {
+            console.error('Failed to sync report to database:', reportError);
+          } else {
+            await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'System', action: 'Report created', at: newReport.submitted_at });
+            await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
+          }
+        } catch (syncError) {
+          console.error('Sync error:', syncError);
+        }
+      } else {
+        console.warn('Supabase not configured. Report saved locally only.');
       }
 
       // Add notification
