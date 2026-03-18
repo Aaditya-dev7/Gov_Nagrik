@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useReports } from '@/contexts/ReportsContext';
 import { Report } from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
@@ -10,9 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
 import { 
   ClipboardList, Upload, CheckCircle, Clock, MapPin, Calendar, 
-  User, FileText, Image, Loader2
+  User, FileText, Image, Loader2, FileText as FileTextIcon, 
+  RefreshCw, AlertTriangle, Building2
 } from 'lucide-react';
 
 interface StaffTask {
@@ -250,34 +253,37 @@ export function StaffDashboardPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">In Progress</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-500">
+      {/* Stats - Match officer dashboard style */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+        <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <Clock className="w-5 h-5 text-blue-500" />
+            </div>
+            <p className="text-2xl sm:text-3xl font-bold mt-2 text-blue-500">
               {myTasks.filter(t => t.status === 'in_progress' || t.status === 'assigned').length}
-            </div>
+            </p>
+            <p className="text-sm text-muted-foreground">In Progress</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-500">
+        <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+            </div>
+            <p className="text-2xl sm:text-3xl font-bold mt-2 text-green-500">
               {myTasks.filter(t => t.status === 'completed').length}
-            </div>
+            </p>
+            <p className="text-sm text-muted-foreground">Completed</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{myTasks.length}</div>
+        <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-start justify-between gap-2">
+              <ClipboardList className="w-5 h-5 text-primary" />
+            </div>
+            <p className="text-2xl sm:text-3xl font-bold mt-2">{myTasks.length}</p>
+            <p className="text-sm text-muted-foreground">Total Tasks</p>
           </CardContent>
         </Card>
       </div>

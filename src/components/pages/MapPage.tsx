@@ -7,7 +7,8 @@ import { Report } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { MapPin, ExternalLink } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { MapPin, ExternalLink, Filter } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { geocodeAddress } from '@/lib/geocoding';
 
@@ -148,7 +149,22 @@ function ReportMarkers({ reports, onOpenReport }: { reports: Report[]; onOpenRep
 
 export function MapPage({ onOpenReport }: MapPageProps) {
   const { reports } = useReports();
+  const { user, isAdmin } = useAuth();
   const [geoPositions, setGeoPositions] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+
+  // Get unique departments from reports
+  const departments = [...new Set(reports.map(r => r.assigned_department).filter(Boolean))];
+
+  // Filter reports based on status and department
+  const filteredReports = reports.filter(r => {
+    if (statusFilter !== 'all' && r.status !== statusFilter) return false;
+    if (departmentFilter !== 'all' && r.assigned_department !== departmentFilter) return false;
+    // For officers (non-admin), only show their department's reports
+    if (!isAdmin && user?.role === 'Field Officer' && user?.department && r.assigned_department !== user.department) return false;
+    return true;
+  });
 
   const getMarkerColor = (priority: string) => {
     switch (priority) {
@@ -167,7 +183,7 @@ export function MapPage({ onOpenReport }: MapPageProps) {
     let cancelled = false;
     (async () => {
       const entries = await Promise.all(
-        reports.map(async (r) => {
+        filteredReports.map(async (r) => {
           const pos = await geocodeAddress(r.location_text);
           return [r.report_id, pos] as const;
         })
@@ -182,9 +198,9 @@ export function MapPage({ onOpenReport }: MapPageProps) {
     return () => {
       cancelled = true;
     };
-  }, [reports]);
+  }, [filteredReports]);
 
-  const mapReports: Report[] = reports.map((r) => ({
+  const mapReports: Report[] = filteredReports.map((r) => ({
     ...r,
     lat: geoPositions[r.report_id]?.lat ?? r.lat,
     lng: geoPositions[r.report_id]?.lng ?? r.lng,
@@ -197,19 +213,50 @@ export function MapPage({ onOpenReport }: MapPageProps) {
         <div>
           <h2 className="text-lg font-semibold">Report Locations</h2>
           <p className="text-sm text-muted-foreground">
-            {reports.length} reports on map
+            {filteredReports.length} reports on map
           </p>
+        </div>
+        
+        {/* Filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Filter className="w-4 h-4 text-muted-foreground" />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="In Progress">In Progress</SelectItem>
+              <SelectItem value="Resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {isAdmin && departments.length > 0 && (
+            <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Department" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Departments</SelectItem>
+                {departments.map(dept => (
+                  <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
 
       <Card className="overflow-hidden">
-        <div className="h-[360px] sm:h-[460px] lg:h-[calc(100vh-260px)] min-h-[360px] relative">
+        <div className="h-[300px] sm:h-[360px] md:h-[460px] lg:h-[calc(100vh-260px)] min-h-[300px] sm:min-h-[360px] relative">
           <MapContainer
             center={defaultCenter}
             zoom={13}
             className='h-full w-full'
             scrollWheelZoom={true}
+            style={{ height: '100%', width: '100%' }}
           >
             <LayersControl position="topright">
               <LayersControl.BaseLayer checked name="Streets">

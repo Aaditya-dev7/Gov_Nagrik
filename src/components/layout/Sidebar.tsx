@@ -36,6 +36,7 @@ const navItems: Array<{
 }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Reports', icon: FileText },
+  { id: 'map', label: 'Map', icon: Map },
   { id: 'my-team', label: 'My Team', icon: UsersRound, officerOnly: true },
   { id: 'nss-registrations', label: 'NSS Volunteers', icon: UserPlus, officerAdminOnly: true },
   { id: 'officers', label: 'Officers', icon: Users, adminOnly: true },
@@ -61,10 +62,10 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     if (item.adminOnly && !isAdmin) return false;
     if (item.officerOnly && !isOfficer) return false;
     if (item.officerAdminOnly && !isAdmin && !isOfficer) return false;
-    // Staff can see dashboard, reports, and settings
-    if (isStaff && !['dashboard', 'reports', 'settings'].includes(item.id)) return false;
+    // Staff can see dashboard, reports, map, and settings
+    if (isStaff && !['dashboard', 'reports', 'map', 'settings'].includes(item.id)) return false;
     // Non-admin, non-officer, non-staff can only see basic items
-    if (!isAdmin && !isOfficer && !isStaff && !['dashboard', 'reports', 'settings'].includes(item.id)) return false;
+    if (!isAdmin && !isOfficer && !isStaff && !['dashboard', 'reports', 'map', 'settings'].includes(item.id)) return false;
     return true;
   });
 

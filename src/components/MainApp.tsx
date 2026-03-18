@@ -17,6 +17,7 @@ import { OfficersPage } from './pages/OfficersPage';
 import { StaffDashboardPage } from './pages/StaffDashboardPage';
 import { OfficerTeamPage } from './pages/OfficerTeamPage';
 import { NSSRegistrationsPage } from './pages/NSSRegistrationsPage';
+import { MapPage } from './pages/MapPage';
 import { t, useLang } from '@/lib/i18n';
 
 export function MainApp() {
@@ -179,6 +180,8 @@ export function MainApp() {
             officerDepartment={!isAdmin && !isStaff ? user?.department : undefined}
           />
         );
+      case 'map':
+        return <MapPage onOpenReport={handleOpenReport} />;
       case 'users':
         return isAdmin ? <UsersPage /> : null;
       case 'departments':
