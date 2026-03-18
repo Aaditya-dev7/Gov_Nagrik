@@ -634,6 +634,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
         priority: newReport.priority,
         status: newReport.status,
         submitted_at: newReport.submitted_at,
+        created_at: new Date().toISOString(),
         deadline: newReport.deadline ?? null,
         location_text: newReport.location_text,
         lat: newReport.lat,
@@ -646,15 +647,22 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
         assigned_officer_name: newReport.assigned_officer_name,
       } as Record<string, any>;
       
-      const { error: insertError } = await sb.from('reports').insert(row);
+      const { data, error: insertError } = await sb
+        .from('reports')
+        .insert(row)
+        .select()
+        .single();
+      
       if (insertError) {
-        console.error('Supabase insert failed:', insertError);
+        console.error('Report save error:', insertError);
         syncFailed = true;
       } else {
+        console.log('Report saved to Supabase:', data?.id);
         await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'System', action: 'Report created', at: newReport.submitted_at });
         await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
       }
     } else {
+      console.warn('[Supabase] Client not available - report saved locally only');
       syncFailed = true;
     }
 
