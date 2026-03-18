@@ -5,7 +5,7 @@ import { Report } from '@/lib/types';
 type ReportsContextType = {
   reports: Report[];
   isLoading: boolean;
-  addReport: (data: any) => Promise<{ success: boolean; syncFailed?: boolean; reportId?: string }>;
+  addReport: (data: any) => void;
   updateReportStatus: (id: string, status: string, note?: string) => void;
   updateAssignment: (id: string, params: { department?: string; officerId?: string | null; officerName?: string | null; actor?: string }) => void;
   deleteReport: (id: string) => void;
@@ -19,17 +19,15 @@ export function MockReportsProvider({ children }: { children: ReactNode }) {
   const [reports, setReports] = useState<Report[]>(MOCK_REPORTS as unknown as Report[]);
   const [notifications, setNotifications] = useState<any[]>([]);
 
-  const addReport = async (data: any): Promise<{ success: boolean; syncFailed?: boolean; reportId?: string }> => {
-    const reportId = `RPT-${Date.now()}`;
+  const addReport = (data: any) => {
     const newReport: any = {
-      report_id: reportId,
+      report_id: `RPT-${Date.now()}`,
       ...data,
       submitted_at: new Date().toISOString(),
       status: 'Pending',
       timeline: [{ actor: 'System', action: 'Report created', at: new Date().toISOString() }],
     };
     setReports(prev => [newReport, ...prev]);
-    return { success: true, syncFailed: false, reportId };
   };
 
   const updateReportStatus = (id: string, status: string, note?: string) => {
