@@ -116,10 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = sb.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
 
+      // FIX: Ignore these events completely — they cause infinite loading loop
+      if (event === 'TOKEN_REFRESHED') return;
+      if (event === 'INITIAL_SESSION') return;
+
       // Skip the initial SIGNED_IN event if getSession already handled it
-      // This prevents the race condition that causes infinite loading
       if (event === 'SIGNED_IN' && !initialSessionHandled) {
-        return; // getSession will handle this
+        return;
       }
 
       if (event === 'SIGNED_OUT') {
@@ -128,13 +131,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Handles SIGNED_IN and token refreshes consistently.
+      // FIX: Only handle actual SIGNED_IN events, ignore all others
+      // If we already have a user loaded, don't re-fetch profile
+      if (event !== 'SIGNED_IN') {
+        return;
+      }
+
       const au = session?.user;
       if (!au) {
         setUser(null);
         setIsLoading(false);
         return;
       }
+
+      // Only fetch profile if we don't already have one
+      if (user) return;
 
       setIsLoading(true);
       await fetchProfile(au);

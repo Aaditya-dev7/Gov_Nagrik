@@ -73,6 +73,7 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     'Water Leakage': 'Water Supply',
     'Drainage Block': 'Water Supply',
     'Street Light': 'Street Lighting',
+    'Street Lighting': 'Street Lighting',
     'Park Maintenance': 'Parks & Gardens',
     'Other': 'General Services'
   };

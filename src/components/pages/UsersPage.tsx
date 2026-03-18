@@ -18,6 +18,7 @@ export function UsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [editUserId, setEditUserId] = useState('');
+  const [editUserEmail, setEditUserEmail] = useState('');
   const [editRole, setEditRole] = useState<User['role']>('Viewer');
   const [editDept, setEditDept] = useState('General');
   const [editStatus, setEditStatus] = useState<'Active' | 'Inactive'>('Active');
@@ -90,6 +91,7 @@ export function UsersPage() {
 
   const openEdit = (user: User) => {
     setEditUserId(user.id);
+    setEditUserEmail(user.email || '');
     setEditRole(user.role as User['role']);
     setEditDept(user.department || 'General');
     setEditStatus((user.status as any) || 'Active');
