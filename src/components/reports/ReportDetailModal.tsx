@@ -52,12 +52,12 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   // Officers and departments from database
   const [officers, setOfficers] = useState<{ id: string; name: string; role: string; department: string }[]>([]);
   const [departments] = useState<string[]>([
+    'General Services',
+    'Parks & Gardens',
     'Roads & Infrastructure',
     'Sanitation',
-    'Water Supply',
     'Street Lighting',
-    'Parks & Gardens',
-    'General Services'
+    'Water Supply'
   ]);
   
   // Selected department for filtering officers
@@ -74,7 +74,6 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     'Water Leakage': 'Water Supply',
     'Drainage Block': 'Water Supply',
     'Street Light': 'Street Lighting',
-    'Street Lighting': 'Street Lighting',
     'Park Maintenance': 'Parks & Gardens',
     'Other': 'General Services'
   };
@@ -114,19 +113,30 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
     
     async function fetchData() {
       try {
+        console.log('Fetching officers from profiles table...');
+        
         // Fetch officers (role = 'officer') with department info
-        const { data: officersData } = await sb
+        const { data: officersData, error: officersError } = await sb
           .from('profiles')
           .select('id, full_name, role, department')
           .eq('role', 'officer');
         
-        if (officersData) {
+        console.log('Officers query result:', { data: officersData, error: officersError });
+        
+        if (officersError) {
+          console.error('Error fetching officers:', officersError);
+        }
+        
+        if (officersData && officersData.length > 0) {
+          console.log('Fetched officers:', officersData.length, officersData);
           setOfficers(officersData.map((o: any) => ({
             id: o.id,
             name: o.full_name || 'Unknown',
             role: o.role,
             department: o.department || 'General Services',
           })));
+        } else {
+          console.log('No officers found in database');
         }
         
         // Fetch staff members if current user is an officer (only from same department)
@@ -169,6 +179,13 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
   const filteredOfficers = selectedDepartment
     ? officers.filter(o => o.department === selectedDepartment)
     : officers;
+  
+  console.log('Filtering officers:', { 
+    totalOfficers: officers.length, 
+    selectedDepartment, 
+    filteredCount: filteredOfficers.length,
+    officerDepartments: officers.map(o => o.department)
+  });
 
   useEffect(() => {
     if (!open || !report) return;
@@ -745,11 +762,14 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
                     <Select 
                       value={report.assigned_officer_id || 'unassigned'} 
                       onValueChange={(val) => {
+                        console.log('Officer selected:', val);
+                        console.log('Filtered officers:', filteredOfficers);
                         if (val === 'unassigned') {
                           updateAssignment(report.report_id, { officerId: null, officerName: null, actor: user?.name || 'System' });
                           toast({ title: 'Assignment Updated', description: 'Officer set to Unassigned' });
                         } else {
                           const officer = filteredOfficers.find(o => o.id === val);
+                          console.log('Found officer:', officer);
                           updateAssignment(report.report_id, { officerId: val, officerName: officer?.name || 'Unassigned', actor: user?.name || 'System' });
                           toast({ title: 'Assignment Updated', description: `Officer set to ${officer?.name || val}` });
                         }
