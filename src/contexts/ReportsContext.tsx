@@ -646,7 +646,15 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
             assigned_officer_name: newReport.assigned_officer_name,
           } as Record<string, any>;
           
-          const { error: reportError } = await sb.from('reports').insert(row);
+          console.log('Attempting Supabase insert...');
+          console.log('Report data:', row);
+          console.log('Auth user:', await sb.auth.getUser());
+          
+          const { data, error: reportError } = await sb.from('reports').insert(row).select().single();
+          
+          console.log('Insert result:', data);
+          console.log('Insert error:', reportError);
+          
           if (reportError) {
             console.error('Failed to sync report to database:', reportError);
           } else {
@@ -654,6 +662,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
             await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
           }
         } catch (syncError) {
+          console.log('Caught error:', syncError);
           console.error('Sync error:', syncError);
         }
       } else {
@@ -695,6 +704,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
   };
 
   const updateAssignment = (reportId: string, params: { department?: string; officerId?: string | null; officerName?: string | null; actor?: string }) => {
+    console.log('updateAssignment called:', { reportId, params });
     const at = new Date().toISOString();
     const { department, officerId, officerName, actor } = params;
     setReports(prev => prev.map(r => {
@@ -709,6 +719,7 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       if (actions.length) {
         next.timeline = [...next.timeline, { actor: actor || 'System', action: actions.join(' • '), at }];
       }
+      console.log('Updated report locally:', next);
       return next;
     }));
     const sb = getSupabase();
@@ -718,8 +729,10 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
       if (typeof officerId !== 'undefined') update.assigned_officer_id = officerId;
       if (typeof officerName !== 'undefined') update.assigned_officer_name = officerName;
       (async () => {
+        console.log('Attempting DB update with:', update);
         if (Object.keys(update).length) {
           const { data, error } = await sb.from('reports').update(update).eq('id', reportId).select('id');
+          console.log('DB update result:', { data, error, reportId });
           if (error) { try { console.error('Supabase update reports failed', error); } catch {} }
           if (!data || data.length === 0) {
             const current = reports.find(r => r.report_id === reportId) || null;
@@ -827,18 +840,19 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
 
 function getCategoryDepartment(category: string): string {
   const mapping: Record<string, string> = {
-    'Pothole': 'Roads',
-    'Road Damage': 'Roads',
+    'Pothole': 'Roads & Infrastructure',
+    'Road Damage': 'Roads & Infrastructure',
+    'Tree Falling Risk': 'Roads & Infrastructure',
     'Garbage Collection': 'Sanitation',
     'Illegal Dumping': 'Sanitation',
-    'Street Light': 'Street Lighting',
+    'Sewage Overflow': 'Sanitation',
     'Water Leakage': 'Water Supply',
-    'Drainage Block': 'Drainage',
-    'Tree Falling Risk': 'Roads',
-    'Sewage Overflow': 'Drainage',
-    'Park Maintenance': 'Sanitation'
+    'Drainage Block': 'Water Supply',
+    'Street Light': 'Street Lighting',
+    'Park Maintenance': 'Parks & Gardens',
+    'Other': 'General Services'
   };
-  return mapping[category] || 'Administration';
+  return mapping[category] || 'General Services';
 }
 
 export function useReports() {
