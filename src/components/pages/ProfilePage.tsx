@@ -24,7 +24,7 @@ interface UserBadge {
   progress?: number;
 }
 
-// Officer/Staff badges based on resolving issues
+// Officer badges based on resolving issues
 const officerBadgeDefinitions = [
   {
     id: 'first_resolve',
@@ -33,8 +33,8 @@ const officerBadgeDefinitions = [
     nameHi: 'पहला समाधान',
     description: 'Resolved your first report',
     icon: '🏅',
-    condition: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.resolved >= 1,
-    progress: (stats: { resolved: number; pending: number; tasksCompleted: number }) => Math.min(stats.resolved / 1, 1),
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.resolved >= 1,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.resolved / 1, 1),
   },
   {
     id: 'quick_responder',
@@ -43,8 +43,8 @@ const officerBadgeDefinitions = [
     nameHi: 'त्वरित उत्तरदाता',
     description: 'Resolved 5 reports',
     icon: '⚡',
-    condition: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.resolved >= 5,
-    progress: (stats: { resolved: number; pending: number; tasksCompleted: number }) => Math.min(stats.resolved / 5, 1),
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.resolved >= 5,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.resolved / 5, 1),
   },
   {
     id: 'dept_champion',
@@ -53,8 +53,8 @@ const officerBadgeDefinitions = [
     nameHi: 'विभाग चैंपियन',
     description: 'Resolved 10 reports in your department',
     icon: '🏆',
-    condition: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.resolved >= 10,
-    progress: (stats: { resolved: number; pending: number; tasksCompleted: number }) => Math.min(stats.resolved / 10, 1),
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.resolved >= 10,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.resolved / 10, 1),
   },
   {
     id: 'zero_pending',
@@ -63,8 +63,22 @@ const officerBadgeDefinitions = [
     nameHi: 'साफ मेज़',
     description: 'No pending reports in your department',
     icon: '✨',
-    condition: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.pending === 0 && stats.resolved > 0,
-    progress: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.pending === 0 ? 1 : 0,
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.pending === 0 && stats.resolved > 0,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.pending === 0 ? 1 : 0,
+  },
+];
+
+// Staff badges based on completing tasks
+const staffBadgeDefinitions = [
+  {
+    id: 'first_task',
+    name: 'First Task Done',
+    nameMr: 'पहिले काम पूर्ण',
+    nameHi: 'पहला काम पूरा',
+    description: 'Completed your first assigned task',
+    icon: '🏅',
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.tasksCompleted >= 1,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.tasksCompleted / 1, 1),
   },
   {
     id: 'team_player',
@@ -73,23 +87,41 @@ const officerBadgeDefinitions = [
     nameHi: 'टीम प्लेयर',
     description: 'Completed 5 assigned tasks',
     icon: '🤝',
-    condition: (stats: { resolved: number; pending: number; tasksCompleted: number }) => stats.tasksCompleted >= 5,
-    progress: (stats: { resolved: number; pending: number; tasksCompleted: number }) => Math.min(stats.tasksCompleted / 5, 1),
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.tasksCompleted >= 5,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.tasksCompleted / 5, 1),
+  },
+  {
+    id: 'hard_worker',
+    name: 'Hard Worker',
+    nameMr: 'कष्टाळू कर्मचारी',
+    nameHi: 'मेहनती कर्मचारी',
+    description: 'Completed 10 assigned tasks',
+    icon: '💪',
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.tasksCompleted >= 10,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.tasksCompleted / 10, 1),
+  },
+  {
+    id: 'dept_champion',
+    name: 'Department Champion',
+    nameMr: 'विभाग चॅम्पियन',
+    nameHi: 'विभाग चैंपियन',
+    description: 'Department resolved 10 reports',
+    icon: '🏆',
+    condition: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => stats.deptResolved >= 10,
+    progress: (stats: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number }) => Math.min(stats.deptResolved / 10, 1),
   },
 ];
 
 // Component for Officer/Staff badges
-function OfficerStaffBadges({ resolved, pending, tasksCompleted, isStaff }: { resolved: number; pending: number; tasksCompleted: number; isStaff: boolean }) {
-  const stats = { resolved, pending, tasksCompleted };
+function OfficerStaffBadges({ resolved, pending, tasksCompleted, deptResolved, isStaff }: { resolved: number; pending: number; tasksCompleted: number; deptResolved: number; isStaff: boolean }) {
+  const stats = { resolved, pending, tasksCompleted, deptResolved };
   
-  // For staff, use tasksCompleted for progress; for officers, use resolved
-  const relevantBadges = isStaff 
-    ? officerBadgeDefinitions.filter(b => b.id === 'team_player' || b.id === 'first_resolve' || b.id === 'quick_responder')
-    : officerBadgeDefinitions.filter(b => b.id !== 'team_player');
+  // Use appropriate badge set based on role
+  const badgeSet = isStaff ? staffBadgeDefinitions : officerBadgeDefinitions;
   
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {relevantBadges.map((badge) => {
+      {badgeSet.map((badge) => {
         const earned = badge.condition(stats);
         const progress = badge.progress(stats);
         
@@ -144,7 +176,7 @@ export function ProfilePage() {
     nss_unit: '',
     department_preference: '',
   });
-  const [workStats, setWorkStats] = useState({ resolved: 0, inProgress: 0, pending: 0, tasksCompleted: 0 });
+  const [workStats, setWorkStats] = useState({ resolved: 0, inProgress: 0, pending: 0, tasksCompleted: 0, deptResolved: 0 });
 
   // Determine if user is gov employee (officer or staff)
   const isGovEmployee = user?.role === 'Field Officer' || user?.role === 'Staff';
@@ -191,7 +223,7 @@ export function ProfilePage() {
     // Fetch work stats for gov employees
     if (isGovEmployee && user.department) {
       if (isStaff) {
-        // Staff: count completed tasks
+        // Staff: count completed tasks and department resolved reports
         sb.from('staff_tasks')
           .select('*', { count: 'exact', head: true })
           .eq('staff_user_id', user.id)
@@ -205,6 +237,14 @@ export function ProfilePage() {
           .in('status', ['assigned', 'in_progress'])
           .then(({ count }) => {
             setWorkStats(prev => ({ ...prev, inProgress: count || 0 }));
+          });
+        // Fetch department resolved count for staff's Department Champion badge
+        sb.from('reports')
+          .select('*', { count: 'exact', head: true })
+          .eq('assigned_department', user.department)
+          .eq('status', 'Resolved')
+          .then(({ count }) => {
+            setWorkStats(prev => ({ ...prev, deptResolved: count || 0 }));
           });
       } else {
         // Officer: count resolved reports in department
@@ -227,6 +267,7 @@ export function ProfilePage() {
             inProgress: inProgress.count || 0,
             pending: pending.count || 0,
             tasksCompleted: 0,
+            deptResolved: resolved.count || 0,
           });
         });
       }
@@ -394,6 +435,7 @@ export function ProfilePage() {
               resolved={workStats.resolved} 
               pending={workStats.pending} 
               tasksCompleted={workStats.tasksCompleted}
+              deptResolved={workStats.deptResolved}
               isStaff={isStaff}
             />
           ) : (

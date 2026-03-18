@@ -77,7 +77,7 @@ interface ReportsContextType {
   isLoading: boolean;
   updateReportStatus: (reportId: string, status: Report['status'], actor: string, reason?: string) => void;
   addProgressNote: (reportId: string, note: string, actor: string) => void;
-  addReport: (data: NewReportData) => void;
+  addReport: (data: NewReportData) => Promise<{ success: boolean; syncFailed?: boolean; reportId?: string }>;
   markNotificationRead: (notificationId: string) => void;
   unreadCount: number;
   updateAssignment: (reportId: string, params: { department?: string; officerId?: string | null; officerName?: string | null; actor?: string }) => void;
@@ -583,89 +583,97 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addReport = (data: NewReportData) => {
+  const addReport = async (data: NewReportData): Promise<{ success: boolean; syncFailed?: boolean; reportId?: string }> => {
     const reportId = generateReportId();
     const submittedAt = new Date().toISOString();
     const computedDeadline = computeDeadlineIso(submittedAt, data.priority);
     const assignedDepartment = getCategoryDepartment(data.category);
     const timelineAt = submittedAt;
 
-    (async () => {
-      const summary = await generateAiSummary({
-        description: data.description,
-        category: data.category,
-        locationText: data.location_text,
-      });
+    let syncFailed = false;
 
-      const newReport: Report = {
-        report_id: reportId,
-        category: data.category,
-        description: data.description,
-        summary,
-        priority: data.priority,
-        status: 'Pending',
-        submitted_at: submittedAt,
-        deadline: computedDeadline ?? undefined,
-        location_text: data.location_text,
-        lat: data.lat,
-        lng: data.lng,
-        reporter: data.reporter,
-        media: [],
-        assigned_department: assignedDepartment,
-        assigned_officer_id: null,
-        assigned_officer_name: 'Unassigned',
-        timeline: [
-          { actor: 'System', action: 'Report created', at: timelineAt },
-          { actor: 'Auto-Assignment', action: `Assigned to ${assignedDepartment} department`, at: timelineAt }
-        ]
-      };
+    const summary = await generateAiSummary({
+      description: data.description,
+      category: data.category,
+      locationText: data.location_text,
+    });
 
-      setReports(prev => [newReport, ...prev]);
+    const newReport: Report = {
+      report_id: reportId,
+      category: data.category,
+      description: data.description,
+      summary,
+      priority: data.priority,
+      status: 'Pending',
+      submitted_at: submittedAt,
+      deadline: computedDeadline ?? undefined,
+      location_text: data.location_text,
+      lat: data.lat,
+      lng: data.lng,
+      reporter: data.reporter,
+      media: [],
+      assigned_department: assignedDepartment,
+      assigned_officer_id: null,
+      assigned_officer_name: 'Unassigned',
+      timeline: [
+        { actor: 'System', action: 'Report created', at: timelineAt },
+        { actor: 'Auto-Assignment', action: `Assigned to ${assignedDepartment} department`, at: timelineAt }
+      ]
+    };
 
-      // Supabase insert if available
-      const sb = getSupabase();
-      if (sb) {
-        const row = {
-          id: newReport.report_id,
-          category: newReport.category,
-          description: newReport.description,
-          summary: newReport.summary,
-          priority: newReport.priority,
-          status: newReport.status,
-          submitted_at: newReport.submitted_at,
-          deadline: newReport.deadline ?? null,
-          location_text: newReport.location_text,
-          lat: newReport.lat,
-          lng: newReport.lng,
-          reporter_name: newReport.reporter.name,
-          reporter_phone: newReport.reporter.phone,
-          anonymous: newReport.reporter.anonymous,
-          assigned_department: newReport.assigned_department,
-          assigned_officer_id: newReport.assigned_officer_id,
-          assigned_officer_name: newReport.assigned_officer_name,
-        } as Record<string, any>;
-        sb.from('reports').insert(row);
-        sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'System', action: 'Report created', at: newReport.submitted_at });
-        sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
+    setReports(prev => [newReport, ...prev]);
+
+    // Supabase insert if available
+    const sb = getSupabase();
+    if (sb) {
+      const row = {
+        id: newReport.report_id,
+        category: newReport.category,
+        description: newReport.description,
+        summary: newReport.summary,
+        priority: newReport.priority,
+        status: newReport.status,
+        submitted_at: newReport.submitted_at,
+        deadline: newReport.deadline ?? null,
+        location_text: newReport.location_text,
+        lat: newReport.lat,
+        lng: newReport.lng,
+        reporter_name: newReport.reporter.name,
+        reporter_phone: newReport.reporter.phone,
+        anonymous: newReport.reporter.anonymous,
+        assigned_department: newReport.assigned_department,
+        assigned_officer_id: newReport.assigned_officer_id,
+        assigned_officer_name: newReport.assigned_officer_name,
+      } as Record<string, any>;
+      
+      const { error: insertError } = await sb.from('reports').insert(row);
+      if (insertError) {
+        console.error('Supabase insert failed:', insertError);
+        syncFailed = true;
+      } else {
+        await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'System', action: 'Report created', at: newReport.submitted_at });
+        await sb.from('report_timeline').insert({ report_id: newReport.report_id, actor: 'Auto-Assignment', action: `Assigned to ${newReport.assigned_department} department`, at: newReport.submitted_at });
       }
+    } else {
+      syncFailed = true;
+    }
 
-      // Add notification
-      const newNotification: Notification = {
-        id: `notif-${Date.now()}`,
-        message: `New ${data.priority.toLowerCase()} priority report ${newReport.report_id} submitted`,
-        timestamp: new Date().toISOString(),
-        read: false,
-        report_id: newReport.report_id
-      };
-      setNotifications(prev => [newNotification, ...prev]);
-    })();
+    // Add notification
+    const newNotification: Notification = {
+      id: `notif-${Date.now()}`,
+      message: `New ${data.priority.toLowerCase()} priority report ${newReport.report_id} submitted`,
+      timestamp: new Date().toISOString(),
+      read: false,
+      report_id: newReport.report_id
+    };
+    setNotifications(prev => [newNotification, ...prev]);
 
     const settings = loadEmailAlertSettings();
     const shouldAlert = settings.enabled && settings.toEmail && (
       (data.priority === 'Urgent' && settings.urgent) ||
       (data.priority === 'High' && settings.high)
     );
-    if (shouldAlert) {
+    if (shouldAlert && !syncFailed) {
       const sb2 = getSupabase();
       if (sb2) {
         sb2.functions.invoke('send-alert', {
@@ -681,6 +689,8 @@ export function ReportsProvider({ children }: { children: ReactNode }) {
         }).catch(() => {});
       }
     }
+
+    return { success: true, syncFailed, reportId };
   };
 
   const updateAssignment = (reportId: string, params: { department?: string; officerId?: string | null; officerName?: string | null; actor?: string }) => {

@@ -1,21 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useReports } from '@/contexts/ReportsContext';
-import { Report } from '@/lib/types';
 import { getSupabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
+import { checkProfanity, getProfanityErrorMessage } from '@/lib/profanity';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
 import { 
   ClipboardList, Upload, CheckCircle, Clock, MapPin, Calendar, 
-  User, FileText, Image, Loader2, FileText as FileTextIcon, 
-  RefreshCw, AlertTriangle, Building2
+  User, FileText, Image, Loader2
 } from 'lucide-react';
 
 interface StaffTask {
@@ -28,12 +25,18 @@ interface StaffTask {
   completed_at?: string;
   notes?: string;
   documents?: { name: string; url: string; type: string }[];
-  report?: Report;
+  report?: {
+    report_id: string;
+    category: string;
+    location_text: string;
+    priority: string;
+    status: string;
+    description?: string;
+  };
 }
 
 export function StaffDashboardPage() {
   const { user } = useAuth();
-  const { reports } = useReports();
   const { toast } = useToast();
   
   const [myTasks, setMyTasks] = useState<StaffTask[]>([]);
@@ -81,6 +84,16 @@ export function StaffDashboardPage() {
 
   const handleUpload = async () => {
     if (!selectedTask) return;
+    
+    // Check for profanity in upload notes
+    if (uploadNotes.trim()) {
+      const profanityResult = checkProfanity(uploadNotes);
+      if (profanityResult.hasProfanity) {
+        const errorMsg = getProfanityErrorMessage(profanityResult);
+        toast({ title: 'Inappropriate Language Detected', description: errorMsg || 'Please remove inappropriate words.', variant: 'destructive' });
+        return;
+      }
+    }
     
     const sb = getSupabase();
     if (!sb || !user) return;
@@ -296,8 +309,10 @@ export function StaffDashboardPage() {
         </h2>
         {myTasks.filter(t => t.status !== 'completed').length === 0 ? (
           <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              No active tasks assigned to you. Your supervising officer will assign tasks.
+            <CardContent className="py-12 text-center">
+              <ClipboardList className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No tasks assigned yet</p>
+              <p className="text-xs text-muted-foreground mt-1">Your supervising officer will assign tasks to you.</p>
             </CardContent>
           </Card>
         ) : (
@@ -305,32 +320,41 @@ export function StaffDashboardPage() {
             {myTasks.filter(t => t.status !== 'completed').map(task => (
               <Card key={task.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="py-4">
-                  <div className="flex justify-between items-start">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{task.report_id}</span>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold">{task.report_id}</span>
+                        {task.report?.category && (
+                          <Badge variant="outline">{task.report.category}</Badge>
+                        )}
+                        {getPriorityBadge(task.report?.priority || '')}
                         {getStatusBadge(task.status)}
                       </div>
                       {task.report && (
                         <>
-                          <p className="text-sm">{task.report.description?.slice(0, 100)}...</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          <p className="text-sm text-muted-foreground line-clamp-2">{task.report.description?.slice(0, 150)}...</p>
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3" />
                               {task.report.location_text}
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
-                              {new Date(task.assigned_at).toLocaleDateString()}
+                              Assigned: {new Date(task.assigned_at).toLocaleDateString()}
                             </span>
                           </div>
                         </>
                       )}
                     </div>
-                    <Button size="sm" onClick={() => completeTask(task)}>
-                      <Upload className="w-4 h-4 mr-1" />
-                      Complete
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => completeTask(task)}>
+                        View Details
+                      </Button>
+                      <Button size="sm" onClick={() => completeTask(task)}>
+                        <Upload className="w-4 h-4 mr-1" />
+                        Mark Complete
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

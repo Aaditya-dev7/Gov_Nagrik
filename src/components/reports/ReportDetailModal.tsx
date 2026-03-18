@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { getSupabase } from '@/lib/supabase';
+import { checkProfanity, getProfanityErrorMessage } from '@/lib/profanity';
 import { 
   Calendar, 
   MapPin, 
@@ -343,6 +344,14 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
       return;
     }
     
+    // Check for profanity in resolution note
+    const profanityResult = checkProfanity(resolutionNote);
+    if (profanityResult.hasProfanity) {
+      const errorMsg = getProfanityErrorMessage(profanityResult);
+      toast({ title: 'Inappropriate Language Detected', description: errorMsg || 'Please remove inappropriate words.', variant: 'destructive' });
+      return;
+    }
+    
     setUploadingDoc(true);
     try {
       let docUrl = resolutionDocUrl;
@@ -435,6 +444,15 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
       toast({ title: "Error", description: "Please provide a rejection reason", variant: "destructive" });
       return;
     }
+    
+    // Check for profanity in rejection reason
+    const profanityResult = checkProfanity(rejectionReason);
+    if (profanityResult.hasProfanity) {
+      const errorMsg = getProfanityErrorMessage(profanityResult);
+      toast({ title: 'Inappropriate Language Detected', description: errorMsg || 'Please remove inappropriate words.', variant: 'destructive' });
+      return;
+    }
+    
     updateReportStatus(report.report_id, 'Rejected', user?.name || 'Unknown', rejectionReason);
     toast({ title: "Status Updated", description: "Report marked as Rejected" });
     setShowRejectionDialog(false);
@@ -447,6 +465,15 @@ export function ReportDetailModal({ report, open, onOpenChange }: ReportDetailMo
       toast({ title: "Error", description: "Please enter a progress note", variant: "destructive" });
       return;
     }
+    
+    // Check for profanity in progress note
+    const profanityResult = checkProfanity(progressNote);
+    if (profanityResult.hasProfanity) {
+      const errorMsg = getProfanityErrorMessage(profanityResult);
+      toast({ title: 'Inappropriate Language Detected', description: errorMsg || 'Please remove inappropriate words.', variant: 'destructive' });
+      return;
+    }
+    
     addProgressNote(report.report_id, progressNote, user?.name || 'Unknown');
     toast({ title: "Note Added", description: "Progress note added successfully" });
     setShowProgressDialog(false);
