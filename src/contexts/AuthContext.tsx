@@ -21,6 +21,12 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const userRef = React.useRef<User | null>(null);
+
+  // Keep the ref strictly in sync with the state so closures can read it
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const mapProfileToUser = (authUser: any, profile: any): User => {
     const email = String(authUser?.email || '');
@@ -145,7 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Only fetch profile if we don't already have one
-      if (user) return;
+      // We must use userRef.current here because 'user' from the closure is always null
+      if (userRef.current) return;
 
       setIsLoading(true);
       await fetchProfile(au);
