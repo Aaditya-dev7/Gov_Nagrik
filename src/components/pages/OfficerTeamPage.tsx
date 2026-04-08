@@ -98,11 +98,12 @@ export function OfficerTeamPage() {
           if (tasksData) {
             // Add staff names to tasks
             const staffMap = new Map(staffData.map(s => [s.id, s.full_name]));
-            const tasksWithNames = tasksData.map(t => ({
+            const tasksWithNames = tasksData.map((t: any) => ({
               ...t,
               staff_name: staffMap.get(t.staff_user_id) || 'Unknown',
+              report: Array.isArray(t.report) ? t.report[0] : t.report,
             }));
-            setStaffTasks(tasksWithNames as StaffTask[]);
+            setStaffTasks(tasksWithNames as unknown as StaffTask[]);
           }
         }
       }
