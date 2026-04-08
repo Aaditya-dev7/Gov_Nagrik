@@ -40,6 +40,8 @@ export function StaffDashboardPage() {
   const { toast } = useToast();
   
   const [myTasks, setMyTasks] = useState<StaffTask[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<Record<string, unknown>[]>([]);
+  const [requestedTasks, setRequestedTasks] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<StaffTask | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -52,6 +54,7 @@ export function StaffDashboardPage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const loadData = async () => {
@@ -60,19 +63,96 @@ export function StaffDashboardPage() {
 
     setIsLoading(true);
     try {
-      // Staff can ONLY see tasks assigned to them personally
+      // Fetch staff's own tasks
       const { data: tasksData } = await sb
         .from('staff_tasks')
         .select('*, report:report_id(*)')
         .eq('staff_user_id', user.id)
         .order('created_at', { ascending: false });
 
+      let myCurrentTasks: StaffTask[] = [];
       if (tasksData) {
-        setMyTasks(tasksData as StaffTask[]);
+        myCurrentTasks = tasksData as StaffTask[];
+        setMyTasks(myCurrentTasks);
+        
+        // Track which tasks we've already requested
+        const reqSet = new Set<string>();
+        myCurrentTasks.forEach(t => {
+          if (t.status === 'requested') reqSet.add(t.report_id);
+        });
+        setRequestedTasks(reqSet);
+      }
+
+      // Fetch available unassigned tasks in their department
+      const { data: reportsData } = await sb
+        .from('reports')
+        .select('*')
+        .ilike('assigned_department', department || '')
+        .neq('status', 'Resolved')
+        .neq('status', 'Rejected')
+        .order('submitted_at', { ascending: false });
+
+      if (reportsData && reportsData.length > 0) {
+        // Find which reports already have ANY active assignments (assigned, in_progress, completed)
+        const reportIds = reportsData.map(r => r.report_id);
+        const { data: anyTaskData } = await sb
+          .from('staff_tasks')
+          .select('report_id, status')
+          .in('report_id', reportIds)
+          .in('status', ['assigned', 'in_progress', 'completed']);
+        
+        const assignedReportIds = new Set((anyTaskData || []).map(t => t.report_id));
+        
+        // Available tasks are those without an active assignment
+        // AND which are not already in myCurrentTasks (requested, etc.)
+        const MyTaskReportIds = new Set(myCurrentTasks.map(t => t.report_id));
+        
+        const available = reportsData.filter(r => 
+          !assignedReportIds.has(r.report_id) && 
+          !MyTaskReportIds.has(r.report_id)
+        );
+        
+        setAvailableTasks(available);
+      } else {
+        setAvailableTasks([]);
       }
     } catch (err) {
       console.error('Error loading staff data:', err);
     } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRequestTask = async (report: Record<string, unknown>) => {
+    const sb = getSupabase();
+    if (!sb || !user) return;
+    
+    setIsLoading(true);
+    try {
+      const { error } = await sb
+        .from('staff_tasks')
+        .insert({
+          report_id: report.report_id,
+          staff_user_id: user.id,
+          status: 'requested',
+          assigned_at: new Date().toISOString()
+        });
+        
+      if (error) {
+        // If unique constraint violation, we already requested it
+        if (error.code === '23505') {
+          toast({ title: 'Already Requested', description: 'You have already requested this task' });
+        } else {
+          throw error;
+        }
+      } else {
+        toast({ title: 'Task Requested', description: 'Your request has been sent to the officer' });
+      }
+      
+      // Reload to update views
+      loadData();
+    } catch (err: unknown) {
+      toast({ title: 'Request Failed', description: (err as Error).message || 'An error occurred', variant: 'destructive' });
       setIsLoading(false);
     }
   };
@@ -138,25 +218,16 @@ export function StaffDashboardPage() {
 
       if (updateErr) throw updateErr;
 
-      // Update report status to resolved with resolution details
-      const reportUpdate: any = {
-        status: 'Resolved',
-        resolved_at: completedAt,
-        resolved_by: user.id,
-        resolution_note: uploadNotes,
-        resolution_documents: uploadedDocs,
+      // Update report status to 'In Progress' to indicate field work is done but pending verification
+      const reportUpdate: Record<string, unknown> = {
+        // Do NOT resolve. Officer will mark resolved.
       };
       
-      await sb
-        .from('reports')
-        .update(reportUpdate)
-        .eq('report_id', selectedTask.report_id);
-
-      // Add timeline entry for resolution
+      // Add timeline entry for resolution uploaded
       await sb.from('report_timeline').insert({
         report_id: selectedTask.report_id,
         actor: `Staff: ${user.name}`,
-        action: `Marked as Resolved - ${uploadNotes}`,
+        action: `Marked as Completed (Pending Verification) - ${uploadNotes}`,
         at: completedAt,
       });
 
@@ -197,18 +268,19 @@ export function StaffDashboardPage() {
 
       toast({
         title: 'Task Completed',
-        description: 'Documents uploaded and report marked as resolved.',
+        description: 'Documents uploaded. Waiting for officer verification.',
       });
 
       setIsUploadModalOpen(false);
       setUploadFiles([]);
       setUploadNotes('');
-      setSelectedTask(null);
+      setIsUploadModalOpen(false);
       loadData();
-    } catch (err: any) {
+    } catch (err: unknown) {
+      console.error('Error completing task:', err);
       toast({
-        title: 'Upload Failed',
-        description: err.message || 'Failed to upload documents',
+        title: 'Error',
+        description: (err as Error).message || 'Failed to complete task.',
         variant: 'destructive',
       });
     } finally {
@@ -218,6 +290,8 @@ export function StaffDashboardPage() {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
+      case 'requested':
+        return <Badge variant="outline" className="border-warning text-warning">Requested</Badge>;
       case 'assigned':
         return <Badge variant="secondary">Assigned</Badge>;
       case 'in_progress':
@@ -295,10 +369,62 @@ export function StaffDashboardPage() {
             <div className="flex items-start justify-between gap-2">
               <ClipboardList className="w-5 h-5 text-primary" />
             </div>
-            <p className="text-2xl sm:text-3xl font-bold mt-2">{myTasks.length}</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-2">{myTasks.filter(t => t.status !== 'requested').length}</p>
             <p className="text-sm text-muted-foreground">Total Tasks</p>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Available Tasks For Request */}
+      <div>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary" />
+          Available Tasks
+        </h2>
+        {availableTasks.length === 0 ? (
+          <Card>
+            <CardContent className="py-6 text-center">
+              <p className="text-muted-foreground">No available tasks in your department at the moment.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {availableTasks.map(report => (
+              <Card key={report.report_id} className="hover:shadow-md transition-shadow">
+                <CardContent className="py-4">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold">{report.report_id}</span>
+                        {report.category && (
+                          <Badge variant="outline">{report.category}</Badge>
+                        )}
+                        {getPriorityBadge(report.priority || '')}
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-2">{report.description?.slice(0, 150)}...</p>
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {report.location_text}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          Submitted: {new Date(report.submitted_at || '').toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => handleRequestTask(report)}>
+                        <Upload className="w-4 h-4 mr-1" /> {/* Actually a request icon would be better but keeping Upload style */}
+                        Request
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* My Active Tasks */}
@@ -307,17 +433,17 @@ export function StaffDashboardPage() {
           <Clock className="w-5 h-5" />
           My Active Tasks
         </h2>
-        {myTasks.filter(t => t.status !== 'completed').length === 0 ? (
+        {myTasks.filter(t => t.status !== 'completed' && t.status !== 'requested').length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <ClipboardList className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No tasks assigned yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Your supervising officer will assign tasks to you.</p>
+              <p className="text-muted-foreground">No tasks actively assigned to you</p>
+              <p className="text-xs text-muted-foreground mt-1">Request a task from the Available Tasks above.</p>
             </CardContent>
           </Card>
         ) : (
           <div className="space-y-3">
-            {myTasks.filter(t => t.status !== 'completed').map(task => (
+            {myTasks.filter(t => t.status !== 'completed' && t.status !== 'requested').map(task => (
               <Card key={task.id} className="hover:shadow-md transition-shadow">
                 <CardContent className="py-4">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
@@ -362,6 +488,39 @@ export function StaffDashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Requested Tasks (Waiting for officer approval) */}
+      {myTasks.filter(t => t.status === 'requested').length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-warning" />
+            Pending Requests
+          </h2>
+          <div className="space-y-3">
+            {myTasks.filter(t => t.status === 'requested').map(task => (
+              <Card key={task.id} className="opacity-80">
+                <CardContent className="py-4">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold">{task.report_id}</span>
+                        {task.report?.category && (
+                          <Badge variant="outline">{task.report.category}</Badge>
+                        )}
+                        {getStatusBadge(task.status)}
+                      </div>
+                      {task.report && (
+                        <p className="text-sm text-muted-foreground line-clamp-1">{task.report.description?.slice(0, 100)}...</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">Waiting for officer to approve your request to work on this task.</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Completed Tasks */}
       <div>

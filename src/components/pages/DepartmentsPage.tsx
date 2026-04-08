@@ -47,7 +47,7 @@ export function DepartmentsPage() {
         const deptUsers = new Map<string, { officers: number; staff: number }>();
         
         if (profiles) {
-          profiles.forEach((p: any) => {
+          profiles.forEach((p: Record<string, unknown>) => {
             const dept = p.department || 'General';
             if (!deptUsers.has(dept)) {
               deptUsers.set(dept, { officers: 0, staff: 0 });

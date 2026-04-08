@@ -471,7 +471,7 @@ export function DashboardPage({ filter, onFilterChange, onOpenReport, onViewAllA
                     {/* Proof Documents */}
                     {hasProof && (
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {docs.slice(0, 3).map((doc: any, idx: number) => (
+                        {docs.slice(0, 3).map((doc: Record<string, unknown>, idx: number) => (
                           <a
                             key={idx}
                             href={doc.url}

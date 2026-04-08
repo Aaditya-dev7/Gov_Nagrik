@@ -167,7 +167,7 @@ export function ProfilePage() {
   const [totalPoints, setTotalPoints] = useState(0);
   const [showNSSDialog, setShowNSSDialog] = useState(false);
   const [nssStatus, setNssStatus] = useState<string | null>(null);
-  const [nssFormData, setNssFormData] = useState<any>(null); // Store full NSS registration data
+  const [nssFormData, setNssFormData] = useState<Record<string, unknown>>(null); // Store full NSS registration data
   const [nssForm, setNssForm] = useState({
     full_name: '',
     email: '',
@@ -193,7 +193,7 @@ export function ProfilePage() {
       .eq('user_id', user.id)
       .then(({ data }) => {
         if (data) {
-          const mapped = data.map((ub: any) => ({
+          const mapped = data.map((ub: Record<string, unknown>) => ({
             id: ub.badges?.id || '',
             name: ub.badges?.name || 'Badge',
             description: ub.badges?.description || '',

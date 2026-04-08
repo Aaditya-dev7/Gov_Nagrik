@@ -11,6 +11,7 @@ import {
   User, Calendar, FileCheck, ExternalLink, TrendingUp
 } from 'lucide-react';
 import { timeAgo } from '@/lib/data';
+import { useToast } from '@/components/ui/use-toast';
 
 interface StaffMember {
   id: string;
@@ -24,7 +25,7 @@ interface StaffTask {
   id: string;
   report_id: string;
   staff_user_id: string;
-  status: 'assigned' | 'in_progress' | 'completed';
+  status: 'requested' | 'assigned' | 'in_progress' | 'completed';
   assigned_at: string;
   completed_at?: string;
   notes?: string;
@@ -52,6 +53,7 @@ const getDeadlineDays = (priority: string): number => {
 export function OfficerTeamPage() {
   const { user } = useAuth();
   const { reports } = useReports();
+  const { toast } = useToast();
   
   const [myStaff, setMyStaff] = useState<StaffMember[]>([]);
   const [staffTasks, setStaffTasks] = useState<StaffTask[]>([]);
@@ -59,6 +61,7 @@ export function OfficerTeamPage() {
   
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
   
   const loadData = async () => {
@@ -67,18 +70,30 @@ export function OfficerTeamPage() {
     
     setIsLoading(true);
     try {
-      // Load staff that report to this officer
-      const { data: staffData } = await sb
+      // DEBUG: Log current user info for context
+      console.log('Officer details:', { id: user.id, department: user.department });
+
+      // Load staff in this officer's department
+      // We filter by role and department (case-insensitive where possible)
+      const { data: staffData, error: staffError } = await sb
         .from('profiles')
-        .select('id, full_name, email, department, created_at')
-        .eq('reports_to_officer_id', user.id);
+        .select('id, full_name, email, department, created_at, role')
+        .eq('role', 'staff')
+        .ilike('department', user.department || '');
       
-      if (staffData) {
-        setMyStaff(staffData as StaffMember[]);
-        
-        // Load tasks for all staff members
-        const staffIds = staffData.map(s => s.id);
-        if (staffIds.length > 0) {
+      console.log('Fetched staffData:', staffData, 'Error:', staffError);
+      
+      if (staffError) {
+        console.error('Error fetching staff members:', staffError);
+        // We'll proceed with empty array if there's an error
+      }
+      
+      const safeStaffData = staffData || [];
+      setMyStaff(safeStaffData as StaffMember[]);
+      
+      // Load tasks for all staff members
+      const staffIds = safeStaffData.map(s => s.id);
+      if (staffIds.length > 0) {
           const { data: tasksData } = await sb
             .from('staff_tasks')
             .select(`
@@ -102,10 +117,9 @@ export function OfficerTeamPage() {
               ...t,
               staff_name: staffMap.get(t.staff_user_id) || 'Unknown',
             }));
-            setStaffTasks(tasksWithNames as StaffTask[]);
+            setStaffTasks(tasksWithNames as unknown as StaffTask[]);
           }
         }
-      }
     } catch (err) {
       console.error('Error loading officer team data:', err);
     } finally {
@@ -125,6 +139,56 @@ export function OfficerTeamPage() {
   const completionRate = teamStats.totalTasks > 0 
     ? Math.round((teamStats.completed / teamStats.totalTasks) * 100) 
     : 0;
+
+  const handleRequest = async (taskId: string, action: 'assigned' | 'declined') => {
+    const sb = getSupabase();
+    if (!sb) return;
+    try {
+      if (action === 'declined') {
+        // Just delete the request if declined
+        await sb.from('staff_tasks').delete().eq('id', taskId);
+        toast({ title: 'Request Declined', description: 'Task request was declined' });
+      } else {
+        await sb.from('staff_tasks').update({ status: 'assigned' }).eq('id', taskId);
+        toast({ title: 'Task Assigned', description: 'Request accepted, task assigned to staff' });
+      }
+      loadData(); // refresh data
+    } catch (err: unknown) {
+      toast({ title: 'Error', description: (err as Error).message || 'An error occurred', variant: 'destructive' });
+    }
+  };
+
+  const handleVerifyResolve = async (task: StaffTask) => {
+    const sb = getSupabase();
+    if (!sb || !user) return;
+    
+    try {
+      // 1. Mark report as Resolved
+      await sb.from('reports').update({
+        status: 'Resolved',
+        resolved_at: task.completed_at || new Date().toISOString(),
+        resolved_by: user.id,
+        resolution_note: `Verified by Officer: ${task.notes || ''}`,
+      }).eq('report_id', task.report_id);
+
+      // 2. Add Timeline Entry
+      await sb.from('report_timeline').insert({
+        report_id: task.report_id,
+        actor: `Officer: ${user.name}`,
+        action: `Verified & Resolved - ${task.notes || 'No notes'}`,
+        at: new Date().toISOString()
+      });
+
+      toast({
+        title: 'Report Resolved',
+        description: `Successfully verified and resolved report ${task.report_id}`,
+      });
+      
+      loadData();
+    } catch (err: unknown) {
+      toast({ title: 'Error Resolving', description: (err as Error).message || 'An error occurred', variant: 'destructive' });
+    }
+  };
   
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -289,6 +353,31 @@ export function OfficerTeamPage() {
                           Completed: <span className="font-medium text-success">{completedCount}</span>
                         </span>
                       </div>
+                      
+                      {/* Task Requests */}
+                      {staffTasks.filter(t => t.staff_user_id === staff.id && t.status === 'requested').length > 0 && (
+                        <div className="mt-3 pt-3 border-t space-y-2">
+                          <p className="text-xs font-semibold text-warning flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> Pending Requests
+                          </p>
+                          {staffTasks.filter(t => t.staff_user_id === staff.id && t.status === 'requested').map(reqTask => (
+                            <div key={reqTask.id} className="flex flex-col sm:flex-row justify-between sm:items-center bg-muted/30 p-2 rounded gap-2 border border-warning/20">
+                              <div className="text-xs">
+                                <span className="font-mono font-bold">{reqTask.report_id}</span>
+                                {reqTask.report?.category && <span className="ml-2 text-muted-foreground">{reqTask.report.category}</span>}
+                              </div>
+                              <div className="flex gap-2">
+                                <Button size="sm" variant="default" className="text-xs h-7" onClick={() => handleRequest(reqTask.id, 'assigned')}>
+                                  Accept & Assign
+                                </Button>
+                                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => handleRequest(reqTask.id, 'declined')}>
+                                  Decline
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -313,14 +402,15 @@ export function OfficerTeamPage() {
             ) : (
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {staffTasks.slice(0, 10).map((task) => {
-                  const report = task.report as any;
+                  const report = task.report as Record<string, unknown> | undefined;
                   const hasDocs = task.documents && task.documents.length > 0;
                   
                   // Calculate deadline status
                   let deadlineStatus = null;
                   if (report?.submitted_at && report?.priority) {
-                    const submittedMs = new Date(report.submitted_at).getTime();
-                    const deadlineDays = getDeadlineDays(report.priority);
+                    const submittedMs = new Date(report.submitted_at as string).getTime();
+                    const priorityStr = report.priority as string;
+                    const deadlineDays = getDeadlineDays(priorityStr);
                     const deadlineMs = submittedMs + deadlineDays * 24 * 60 * 60 * 1000;
                     const now = Date.now();
                     
@@ -342,8 +432,10 @@ export function OfficerTeamPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {getStatusBadge(task.status)}
-                          {report && getPriorityBadge(report.priority)}
+                          <span className="text-xs text-muted-foreground border px-1.5 py-0.5 rounded capitalize">
+                            {task.status.replace('_', ' ')}
+                          </span>
+                          {report?.priority && getPriorityBadge(report.priority as string)}
                         </div>
                       </div>
                       
@@ -398,11 +490,21 @@ export function OfficerTeamPage() {
                         </div>
                       )}
                       
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {task.status === 'completed' 
-                          ? `Completed ${timeAgo(task.completed_at)}`
-                          : `Assigned ${timeAgo(task.assigned_at)}`
-                        }
+                      <div className="flex justify-between items-end mt-2">
+                        <div className="text-xs text-muted-foreground">
+                          {task.status === 'completed' 
+                            ? `Completed ${timeAgo(task.completed_at)}`
+                            : `Assigned ${timeAgo(task.assigned_at)}`
+                          }
+                        </div>
+                        
+                        {/* Final Resolution Button */}
+                        {task.status === 'completed' && report?.status !== 'Resolved' && (
+                          <Button size="sm" className="h-7 text-xs bg-success hover:bg-success/90" onClick={() => handleVerifyResolve(task)}>
+                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                            Verify & Mark Resolved
+                          </Button>
+                        )}
                       </div>
                     </div>
                   );

@@ -36,7 +36,7 @@ export function UsersPage() {
         ]);
         
         if (usersRes.data) {
-          setUsers(usersRes.data.map((p: any) => ({
+          setUsers(usersRes.data.map((p: Record<string, unknown>) => ({
             id: p.id,
             name: p.full_name || 'Unknown',
             email: p.email || '',
@@ -47,7 +47,7 @@ export function UsersPage() {
         }
         
         if (deptsRes.data) {
-          const uniqueDepts = [...new Set(deptsRes.data.map((r: any) => r.assigned_department).filter(Boolean))];
+          const uniqueDepts = [...new Set(deptsRes.data.map((r: Record<string, unknown>) => r.assigned_department).filter(Boolean))];
           setDepartments(uniqueDepts.sort());
         }
       } catch (err) {
@@ -94,7 +94,7 @@ export function UsersPage() {
     setEditUserEmail(user.email || '');
     setEditRole(user.role as User['role']);
     setEditDept(user.department || 'General');
-    setEditStatus((user.status as any) || 'Active');
+    setEditStatus((user.status as Record<string, unknown>) || 'Active');
     setEditOpen(true);
   };
 

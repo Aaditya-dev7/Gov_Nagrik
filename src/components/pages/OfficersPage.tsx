@@ -32,7 +32,7 @@ export function OfficersPage({ onNavigateToReportsFiltered }: OfficersPageProps)
         if (error) throw error;
         
         if (data) {
-          const mapped = data.map((p: any) => ({
+          const mapped = data.map((p: Record<string, unknown>) => ({
             id: p.id,
             name: p.full_name || 'Unknown',
             email: p.email || '',

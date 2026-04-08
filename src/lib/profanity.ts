@@ -76,9 +76,7 @@ export function checkProfanity(text: string): ProfanityResult {
       for (const profaneWord of mediumSeveritySet) {
         if (profaneWord.length >= 4 && cleanWord.includes(profaneWord)) {
           matchedWords.add(profaneWord);
-          if (maxSeverity !== 'high') {
-            maxSeverity = 'medium';
-          }
+          maxSeverity = 'medium';
           break;
         }
       }
