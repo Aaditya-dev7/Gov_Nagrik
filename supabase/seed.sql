@@ -136,7 +136,7 @@ CREATE POLICY "Admins can manage all profiles" ON profiles FOR ALL TO authentica
 );
 DROP POLICY IF EXISTS "Officers can view profiles" ON profiles;
 CREATE POLICY "Officers can view profiles" ON profiles FOR SELECT TO authenticated USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'Field Officer'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'officer'))
 );
 DROP POLICY IF EXISTS "Public profiles viewable" ON profiles;
 CREATE POLICY "Public profiles viewable" ON profiles FOR SELECT TO public USING (true);
@@ -166,7 +166,7 @@ DROP POLICY IF EXISTS "Users can insert own NSS" ON nss_registrations;
 CREATE POLICY "Users can insert own NSS" ON nss_registrations FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Officers can manage NSS" ON nss_registrations;
 CREATE POLICY "Officers can manage NSS" ON nss_registrations FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'Field Officer'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'officer'))
 );
 
 -- Staff tasks policies
@@ -174,25 +174,25 @@ DROP POLICY IF EXISTS "Staff can view own tasks" ON staff_tasks;
 CREATE POLICY "Staff can view own tasks" ON staff_tasks FOR SELECT TO authenticated USING (auth.uid() = staff_user_id);
 DROP POLICY IF EXISTS "Officers can manage team tasks" ON staff_tasks;
 CREATE POLICY "Officers can manage team tasks" ON staff_tasks FOR ALL TO authenticated USING (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'Field Officer'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'officer'))
 );
 DROP POLICY IF EXISTS "Staff can update own tasks" ON staff_tasks;
 CREATE POLICY "Staff can update own tasks" ON staff_tasks FOR UPDATE TO authenticated USING (auth.uid() = staff_user_id);
 DROP POLICY IF EXISTS "Officers can insert tasks" ON staff_tasks;
 CREATE POLICY "Officers can insert tasks" ON staff_tasks FOR INSERT TO authenticated WITH CHECK (
-    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'Field Officer'))
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin', 'officer'))
 );
 
 -- ========================================
 -- 4. INSERT TEST DEPARTMENTS
 -- ========================================
 INSERT INTO departments (id, name, description) VALUES
-    ('dept-roads', 'Roads', 'Road maintenance and infrastructure'),
+    ('dept-general', 'General Services', 'General services and administration'),
+    ('dept-parks', 'Parks & Gardens', 'Public parks and gardens'),
+    ('dept-roads', 'Roads & Infrastructure', 'Roads and infrastructure'),
     ('dept-sanitation', 'Sanitation', 'Waste management and cleanliness'),
-    ('dept-water', 'Water Supply', 'Water supply and distribution'),
     ('dept-lighting', 'Street Lighting', 'Street lights and public lighting'),
-    ('dept-drainage', 'Drainage', 'Storm water and sewage management'),
-    ('dept-parks', 'Parks', 'Public parks and gardens')
+    ('dept-water', 'Water Supply', 'Water supply and distribution')
 ON CONFLICT (id) DO NOTHING;
 
 -- ========================================
@@ -231,22 +231,22 @@ WHERE email IN (
 -- 5. SETUP DEPARTMENT ADMINS
 -- ========================================
 
-UPDATE profiles SET role = 'admin', department = 'Roads', full_name = COALESCE(full_name, 'Rajesh Kumar') WHERE email = 'rajesh.kumar@nagrik.gov.in';
+UPDATE profiles SET role = 'admin', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Rajesh Kumar') WHERE email = 'rajesh.kumar@nagrik.gov.in';
 UPDATE profiles SET role = 'admin', department = 'Sanitation', full_name = COALESCE(full_name, 'Priya Sharma') WHERE email = 'priya.sharma@nagrik.gov.in';
 UPDATE profiles SET role = 'admin', department = 'Water Supply', full_name = COALESCE(full_name, 'Amit Patel') WHERE email = 'amit.patel@nagrik.gov.in';
-UPDATE profiles SET role = 'admin', department = 'Electricity', full_name = COALESCE(full_name, 'Suresh Verma') WHERE email = 'suresh.verma@nagrik.gov.in';
-UPDATE profiles SET role = 'admin', department = 'Drainage', full_name = COALESCE(full_name, 'Kavita Singh') WHERE email = 'kavita.singh@nagrik.gov.in';
+UPDATE profiles SET role = 'admin', department = 'Street Lighting', full_name = COALESCE(full_name, 'Suresh Verma') WHERE email = 'suresh.verma@nagrik.gov.in';
+UPDATE profiles SET role = 'admin', department = 'Water Supply', full_name = COALESCE(full_name, 'Kavita Singh') WHERE email = 'kavita.singh@nagrik.gov.in';
 UPDATE profiles SET role = 'admin', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Ramesh Gupta') WHERE email = 'ramesh.gupta@nagrik.gov.in';
-UPDATE profiles SET role = 'admin', department = 'Public Buildings', full_name = COALESCE(full_name, 'Sunita Deshmukh') WHERE email = 'sunita.deshmukh@nagrik.gov.in';
-UPDATE profiles SET role = 'admin', department = 'Transport', full_name = COALESCE(full_name, 'Vikram Joshi') WHERE email = 'vikram.joshi@nagrik.gov.in';
+UPDATE profiles SET role = 'admin', department = 'General Services', full_name = COALESCE(full_name, 'Sunita Deshmukh') WHERE email = 'sunita.deshmukh@nagrik.gov.in';
+UPDATE profiles SET role = 'admin', department = 'General Services', full_name = COALESCE(full_name, 'Vikram Joshi') WHERE email = 'vikram.joshi@nagrik.gov.in';
 
 -- ========================================
 -- 6. SETUP FIELD OFFICERS
 -- ========================================
 
--- Roads Department Officers
-UPDATE profiles SET role = 'officer', department = 'Roads', full_name = COALESCE(full_name, 'Deepak Sharma') WHERE email = 'deepak.sharma@nagrik.gov.in';
-UPDATE profiles SET role = 'officer', department = 'Roads', full_name = COALESCE(full_name, 'Neha Gupta') WHERE email = 'neha.gupta@nagrik.gov.in';
+-- Roads & Infrastructure Department Officers
+UPDATE profiles SET role = 'officer', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Deepak Sharma') WHERE email = 'deepak.sharma@nagrik.gov.in';
+UPDATE profiles SET role = 'officer', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Neha Gupta') WHERE email = 'neha.gupta@nagrik.gov.in';
 
 -- Sanitation Department Officers
 UPDATE profiles SET role = 'officer', department = 'Sanitation', full_name = COALESCE(full_name, 'Sanjay Mehta') WHERE email = 'sanjay.mehta@nagrik.gov.in';
@@ -256,36 +256,36 @@ UPDATE profiles SET role = 'officer', department = 'Sanitation', full_name = COA
 UPDATE profiles SET role = 'officer', department = 'Water Supply', full_name = COALESCE(full_name, 'Rahul Singh') WHERE email = 'rahul.singh@nagrik.gov.in';
 UPDATE profiles SET role = 'officer', department = 'Water Supply', full_name = COALESCE(full_name, 'Pooja Verma') WHERE email = 'pooja.verma@nagrik.gov.in';
 
--- Electricity Department Officers
-UPDATE profiles SET role = 'officer', department = 'Electricity', full_name = COALESCE(full_name, 'Anil Kumar') WHERE email = 'anil.kumar@nagrik.gov.in';
-UPDATE profiles SET role = 'officer', department = 'Electricity', full_name = COALESCE(full_name, 'Meera Iyer') WHERE email = 'meera.iyer@nagrik.gov.in';
+-- Street Lighting Department Officers
+UPDATE profiles SET role = 'officer', department = 'Street Lighting', full_name = COALESCE(full_name, 'Anil Kumar') WHERE email = 'anil.kumar@nagrik.gov.in';
+UPDATE profiles SET role = 'officer', department = 'Street Lighting', full_name = COALESCE(full_name, 'Meera Iyer') WHERE email = 'meera.iyer@nagrik.gov.in';
 
--- Drainage Department Officers
-UPDATE profiles SET role = 'officer', department = 'Drainage', full_name = COALESCE(full_name, 'Vijay Patil') WHERE email = 'vijay.patil@nagrik.gov.in';
-UPDATE profiles SET role = 'officer', department = 'Drainage', full_name = COALESCE(full_name, 'Shweta Rao') WHERE email = 'shweta.rao@nagrik.gov.in';
+-- Water Supply Department Officers (Drainage merged)
+UPDATE profiles SET role = 'officer', department = 'Water Supply', full_name = COALESCE(full_name, 'Vijay Patil') WHERE email = 'vijay.patil@nagrik.gov.in';
+UPDATE profiles SET role = 'officer', department = 'Water Supply', full_name = COALESCE(full_name, 'Shweta Rao') WHERE email = 'shweta.rao@nagrik.gov.in';
 
 -- Parks & Gardens Department Officers
 UPDATE profiles SET role = 'officer', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Ganesh Kulkarni') WHERE email = 'ganesh.kulkarni@nagrik.gov.in';
 UPDATE profiles SET role = 'officer', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Divya Nair') WHERE email = 'divya.nair@nagrik.gov.in';
 
--- Public Buildings Department Officers
-UPDATE profiles SET role = 'officer', department = 'Public Buildings', full_name = COALESCE(full_name, 'Prakash Jadhav') WHERE email = 'prakash.jadhav@nagrik.gov.in';
-UPDATE profiles SET role = 'officer', department = 'Public Buildings', full_name = COALESCE(full_name, 'Kiran Chavan') WHERE email = 'kiran.chavan@nagrik.gov.in';
+-- General Services Department Officers
+UPDATE profiles SET role = 'officer', department = 'General Services', full_name = COALESCE(full_name, 'Prakash Jadhav') WHERE email = 'prakash.jadhav@nagrik.gov.in';
+UPDATE profiles SET role = 'officer', department = 'General Services', full_name = COALESCE(full_name, 'Kiran Chavan') WHERE email = 'kiran.chavan@nagrik.gov.in';
 
--- Transport Department Officers
-UPDATE profiles SET role = 'officer', department = 'Transport', full_name = COALESCE(full_name, 'Sunil More') WHERE email = 'sunil.more@nagrik.gov.in';
-UPDATE profiles SET role = 'officer', department = 'Transport', full_name = COALESCE(full_name, 'Bhavna Shah') WHERE email = 'bhavna.shah@nagrik.gov.in';
+-- General Services Department Officers
+UPDATE profiles SET role = 'officer', department = 'General Services', full_name = COALESCE(full_name, 'Sunil More') WHERE email = 'sunil.more@nagrik.gov.in';
+UPDATE profiles SET role = 'officer', department = 'General Services', full_name = COALESCE(full_name, 'Bhavna Shah') WHERE email = 'bhavna.shah@nagrik.gov.in';
 
 -- ========================================
 -- 7. SETUP STAFF (5 per department)
 -- ========================================
 
--- ROADS DEPARTMENT STAFF (5 staff)
-UPDATE profiles SET role = 'staff', department = 'Roads', full_name = COALESCE(full_name, 'Rohit Yadav'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'rohit.yadav@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Roads', full_name = COALESCE(full_name, 'Sachin Pawar'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'sachin.pawar@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Roads', full_name = COALESCE(full_name, 'Mangesh Gaikwad'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'mangesh.gaikwad@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Roads', full_name = COALESCE(full_name, 'Pratik Kadam'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'neha.gupta@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Neha Gupta' WHERE email = 'pratik.kadam@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Roads', full_name = COALESCE(full_name, 'Akshay Shinde'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'neha.gupta@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Neha Gupta' WHERE email = 'akshay.shinde@nagrik.gov.in';
+-- ROADS & INFRASTRUCTURE DEPARTMENT STAFF (5 staff)
+UPDATE profiles SET role = 'staff', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Rohit Yadav'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'rohit.yadav@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Sachin Pawar'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'sachin.pawar@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Mangesh Gaikwad'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'deepak.sharma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Deepak Sharma' WHERE email = 'mangesh.gaikwad@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Pratik Kadam'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'neha.gupta@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Neha Gupta' WHERE email = 'pratik.kadam@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Roads & Infrastructure', full_name = COALESCE(full_name, 'Akshay Shinde'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'neha.gupta@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Neha Gupta' WHERE email = 'akshay.shinde@nagrik.gov.in';
 
 -- SANITATION DEPARTMENT STAFF (5 staff)
 UPDATE profiles SET role = 'staff', department = 'Sanitation', full_name = COALESCE(full_name, 'Babu Rao'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sanjay.mehta@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sanjay Mehta' WHERE email = 'babu.rao@nagrik.gov.in';
@@ -294,26 +294,24 @@ UPDATE profiles SET role = 'staff', department = 'Sanitation', full_name = COALE
 UPDATE profiles SET role = 'staff', department = 'Sanitation', full_name = COALESCE(full_name, 'Raju Singh'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anita.reddy@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anita Reddy' WHERE email = 'raju.singh@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Sanitation', full_name = COALESCE(full_name, 'Sunita Kumari'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anita.reddy@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anita Reddy' WHERE email = 'sunita.kumari@nagrik.gov.in';
 
--- WATER SUPPLY DEPARTMENT STAFF (5 staff)
+-- WATER SUPPLY DEPARTMENT STAFF (10 staff - includes Drainage)
 UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Ramesh Thakur'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'rahul.singh@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Rahul Singh' WHERE email = 'ramesh.thakur@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Dinesh Kumar'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'rahul.singh@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Rahul Singh' WHERE email = 'dinesh.kumar@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Gopal Swami'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'rahul.singh@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Rahul Singh' WHERE email = 'gopal.swami@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Nitin Kale'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'pooja.verma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Pooja Verma' WHERE email = 'nitin.kale@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Asha Rani'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'pooja.verma@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Pooja Verma' WHERE email = 'asha.rani@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Rajendra Patil'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'rajendra.patil@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Anand Sawant'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'anand.sawant@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Mohan Sharma'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'mohan.sharma@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Kavita Desai'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'shweta.rao@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Shweta Rao' WHERE email = 'kavita.desai@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Water Supply', full_name = COALESCE(full_name, 'Sunil Naik'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'shweta.rao@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Shweta Rao' WHERE email = 'sunil.naik@nagrik.gov.in';
 
--- ELECTRICITY DEPARTMENT STAFF (5 staff)
-UPDATE profiles SET role = 'staff', department = 'Electricity', full_name = COALESCE(full_name, 'Suresh Kamble'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'suresh.kamble@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Electricity', full_name = COALESCE(full_name, 'Prakash Nemade'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'prakash.nemade@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Electricity', full_name = COALESCE(full_name, 'Vinod Lokhande'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'vinod.lokhande@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Electricity', full_name = COALESCE(full_name, 'Usha Patil'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'meera.iyer@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Meera Iyer' WHERE email = 'usha.patil@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Electricity', full_name = COALESCE(full_name, 'Deepak Jadhav'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'meera.iyer@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Meera Iyer' WHERE email = 'deepak.jadhav@nagrik.gov.in';
-
--- DRAINAGE DEPARTMENT STAFF (5 staff)
-UPDATE profiles SET role = 'staff', department = 'Drainage', full_name = COALESCE(full_name, 'Rajendra Patil'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'rajendra.patil@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Drainage', full_name = COALESCE(full_name, 'Anand Sawant'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'anand.sawant@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Drainage', full_name = COALESCE(full_name, 'Mohan Sharma'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'vijay.patil@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Vijay Patil' WHERE email = 'mohan.sharma@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Drainage', full_name = COALESCE(full_name, 'Kavita Desai'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'shweta.rao@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Shweta Rao' WHERE email = 'kavita.desai@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Drainage', full_name = COALESCE(full_name, 'Sunil Naik'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'shweta.rao@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Shweta Rao' WHERE email = 'sunil.naik@nagrik.gov.in';
+-- STREET LIGHTING DEPARTMENT STAFF (5 staff)
+UPDATE profiles SET role = 'staff', department = 'Street Lighting', full_name = COALESCE(full_name, 'Suresh Kamble'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'suresh.kamble@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Street Lighting', full_name = COALESCE(full_name, 'Prakash Nemade'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'prakash.nemade@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Street Lighting', full_name = COALESCE(full_name, 'Vinod Lokhande'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'anil.kumar@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Anil Kumar' WHERE email = 'vinod.lokhande@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Street Lighting', full_name = COALESCE(full_name, 'Usha Patil'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'meera.iyer@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Meera Iyer' WHERE email = 'usha.patil@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'Street Lighting', full_name = COALESCE(full_name, 'Deepak Jadhav'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'meera.iyer@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Meera Iyer' WHERE email = 'deepak.jadhav@nagrik.gov.in';
 
 -- PARKS & GARDENS DEPARTMENT STAFF (5 staff)
 UPDATE profiles SET role = 'staff', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Ganpat More'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'ganesh.kulkarni@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Ganesh Kulkarni' WHERE email = 'ganpat.more@nagrik.gov.in';
@@ -322,19 +320,17 @@ UPDATE profiles SET role = 'staff', department = 'Parks & Gardens', full_name = 
 UPDATE profiles SET role = 'staff', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Sneha Kulkarni'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'divya.nair@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Divya Nair' WHERE email = 'sneha.kulkarni@nagrik.gov.in';
 UPDATE profiles SET role = 'staff', department = 'Parks & Gardens', full_name = COALESCE(full_name, 'Arun Bhoir'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'divya.nair@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Divya Nair' WHERE email = 'arun.bhoir@nagrik.gov.in';
 
--- PUBLIC BUILDINGS DEPARTMENT STAFF (5 staff)
-UPDATE profiles SET role = 'staff', department = 'Public Buildings', full_name = COALESCE(full_name, 'Nandkumar Gaikwad'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'nandkumar.gaikwad@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Public Buildings', full_name = COALESCE(full_name, 'Shila Devi'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'shila.devi@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Public Buildings', full_name = COALESCE(full_name, 'Bhagwan Salve'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'bhagwan.salve@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Public Buildings', full_name = COALESCE(full_name, 'Meena Chavan'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'kiran.chavan@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Kiran Chavan' WHERE email = 'meena.chavan@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Public Buildings', full_name = COALESCE(full_name, 'Datta Pawar'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'kiran.chavan@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Kiran Chavan' WHERE email = 'datta.pawar@nagrik.gov.in';
-
--- TRANSPORT DEPARTMENT STAFF (5 staff)
-UPDATE profiles SET role = 'staff', department = 'Transport', full_name = COALESCE(full_name, 'Yogesh Thakur'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'yogesh.thakur@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Transport', full_name = COALESCE(full_name, 'Pankaj Verma'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'pankaj.verma@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Transport', full_name = COALESCE(full_name, 'Rashmi Singh'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'rashmi.singh@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Transport', full_name = COALESCE(full_name, 'Hemant Shah'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'bhavna.shah@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Bhavna Shah' WHERE email = 'hemant.shah@nagrik.gov.in';
-UPDATE profiles SET role = 'staff', department = 'Transport', full_name = COALESCE(full_name, 'Nisha Kapoor'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'bhavna.shah@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Bhavna Shah' WHERE email = 'nisha.kapoor@nagrik.gov.in';
+-- GENERAL SERVICES DEPARTMENT STAFF (10 staff)
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Nandkumar Gaikwad'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'nandkumar.gaikwad@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Shila Devi'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'shila.devi@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Bhagwan Salve'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'prakash.jadhav@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Prakash Jadhav' WHERE email = 'bhagwan.salve@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Meena Chavan'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'kiran.chavan@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Kiran Chavan' WHERE email = 'meena.chavan@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Datta Pawar'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'kiran.chavan@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Kiran Chavan' WHERE email = 'datta.pawar@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Yogesh Thakur'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'yogesh.thakur@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Pankaj Verma'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'pankaj.verma@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Rashmi Singh'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'sunil.more@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Sunil More' WHERE email = 'rashmi.singh@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Hemant Shah'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'bhavna.shah@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Bhavna Shah' WHERE email = 'hemant.shah@nagrik.gov.in';
+UPDATE profiles SET role = 'staff', department = 'General Services', full_name = COALESCE(full_name, 'Nisha Kapoor'), reports_to_officer_id = (SELECT id FROM profiles WHERE email = 'bhavna.shah@nagrik.gov.in' LIMIT 1), reports_to_officer_name = 'Bhavna Shah' WHERE email = 'nisha.kapoor@nagrik.gov.in';
 
 -- ========================================
 -- 8. VERIFY SETUP

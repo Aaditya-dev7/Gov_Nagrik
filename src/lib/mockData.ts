@@ -40,10 +40,12 @@ export const MOCK_USERS = {
 };
 
 export const MOCK_DEPARTMENTS = [
-  { id: 'dept-roads', name: 'Roads', description: 'Road maintenance' },
+  { id: 'dept-general', name: 'General Services', description: 'General services' },
+  { id: 'dept-parks', name: 'Parks & Gardens', description: 'Parks and gardens' },
+  { id: 'dept-roads', name: 'Roads & Infrastructure', description: 'Roads and infrastructure' },
   { id: 'dept-sanitation', name: 'Sanitation', description: 'Waste management' },
+  { id: 'dept-lighting', name: 'Street Lighting', description: 'Street lighting' },
   { id: 'dept-water', name: 'Water Supply', description: 'Water supply' },
-  { id: 'dept-lighting', name: 'Street Lighting', description: 'Public lighting' },
 ];
 
 export const MOCK_REPORTS = [

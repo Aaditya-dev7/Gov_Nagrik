@@ -37,39 +37,50 @@ export function checkProfanity(text: string): ProfanityResult {
   const matchedWords: Set<string> = new Set();
   let maxSeverity: 'none' | 'medium' | 'high' = 'none';
 
-  // 1. Check for multi-word phrases directly in the text (e.g. Hindi slang with spaces)
-  for (const profaneWord of highSeveritySet) {
-    if (profaneWord.includes(' ') && lowerText.includes(profaneWord)) {
-      matchedWords.add(profaneWord);
-      maxSeverity = 'high';
-    }
-  }
-  for (const profaneWord of mediumSeveritySet) {
-    if (profaneWord.includes(' ') && lowerText.includes(profaneWord)) {
-      matchedWords.add(profaneWord);
-      if (maxSeverity === 'none') {
-        maxSeverity = 'medium';
-      }
-    }
-  }
-
-  // 2. Split text into individual words for single-word matching
+  // Split text into words and check each one
   const words = lowerText.split(/\s+/);
   
   for (const word of words) {
-    // Remove typical exact edge punctuation but preserve word internals
-    const cleanWord = word.replace(/^[\.,\?\"\'\:\;\[\]\{\}\(\)\-]+|[\.,\?\"\'\:\;\[\]\{\}\(\)\-]+$/g, '');
+    // Remove punctuation from word edges
+    const cleanWord = word.replace(/^[^\w]+|[^\w]+$/g, '');
     
     if (!cleanWord || cleanWord.length < 2) continue;
     
-    // Exact match checks for high and medium severity
+    // Check exact match in high severity
     if (highSeveritySet.has(cleanWord)) {
       matchedWords.add(cleanWord);
       maxSeverity = 'high';
-    } else if (mediumSeveritySet.has(cleanWord)) {
+      continue;
+    }
+    
+    // Check exact match in medium severity
+    if (mediumSeveritySet.has(cleanWord)) {
       matchedWords.add(cleanWord);
-      if (maxSeverity === 'none') {
+      if (maxSeverity !== 'high') {
         maxSeverity = 'medium';
+      }
+      continue;
+    }
+    
+    // Check if word contains any profane word (for obfuscated/leetspeak)
+    // Only check shorter profanity words to avoid false positives
+    for (const profaneWord of highSeveritySet) {
+      if (profaneWord.length >= 3 && cleanWord.includes(profaneWord)) {
+        matchedWords.add(profaneWord);
+        maxSeverity = 'high';
+        break;
+      }
+    }
+    
+    if (maxSeverity !== 'high') {
+      for (const profaneWord of mediumSeveritySet) {
+        if (profaneWord.length >= 4 && cleanWord.includes(profaneWord)) {
+          matchedWords.add(profaneWord);
+          if (maxSeverity !== 'high') {
+            maxSeverity = 'medium';
+          }
+          break;
+        }
       }
     }
   }

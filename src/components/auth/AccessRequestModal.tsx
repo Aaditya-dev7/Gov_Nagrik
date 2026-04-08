@@ -40,7 +40,7 @@ const DEPARTMENT_EMAIL_PATTERNS: Record<string, string[]> = {
   'Sanitation': ['sanitation', 'swachh', 'cleanliness'],
   'Water Supply': ['water', 'jal', 'wsd'],
   'Drainage': ['drainage', 'storm', 'sewage'],
-  'Street Lighting': ['lighting', 'electricity', 'led'],
+  'Street Lighting': ['lighting', 'electricity', 'led', 'street light'],
   'Administration': ['admin', 'secretary', 'commissioner'],
 };
 

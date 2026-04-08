@@ -9,11 +9,12 @@ export const mockUsers: User[] = [
 ];
 
 export const mockDepartments: Department[] = [
-  { id: 'dept-1', name: 'Roads', ward: 'Ward 1-5', officerCount: 8, activeReports: 23 },
-  { id: 'dept-2', name: 'Sanitation', ward: 'All Wards', officerCount: 15, activeReports: 45 },
-  { id: 'dept-3', name: 'Water Supply', ward: 'Ward 1-10', officerCount: 12, activeReports: 18 },
-  { id: 'dept-4', name: 'Street Lighting', ward: 'All Wards', officerCount: 6, activeReports: 12 },
-  { id: 'dept-5', name: 'Drainage', ward: 'Ward 3-8', officerCount: 10, activeReports: 31 }
+  { id: 'dept-1', name: 'General Services', ward: 'All Wards', officerCount: 5, activeReports: 10 },
+  { id: 'dept-2', name: 'Parks & Gardens', ward: 'Ward 1-5', officerCount: 8, activeReports: 15 },
+  { id: 'dept-3', name: 'Roads & Infrastructure', ward: 'All Wards', officerCount: 12, activeReports: 35 },
+  { id: 'dept-4', name: 'Sanitation', ward: 'All Wards', officerCount: 15, activeReports: 45 },
+  { id: 'dept-5', name: 'Street Lighting', ward: 'All Wards', officerCount: 6, activeReports: 12 },
+  { id: 'dept-6', name: 'Water Supply', ward: 'Ward 1-10', officerCount: 10, activeReports: 20 }
 ];
 
 export const mockReports: Report[] = [
