@@ -170,20 +170,25 @@ export function OfficerTeamPage() {
     
     try {
       // 1. Mark report as Resolved
-      await sb.from('reports').update({
+      const { error: updateError } = await sb.from('reports').update({
         status: 'Resolved',
         resolved_at: task.completed_at || new Date().toISOString(),
         resolved_by: user.id,
         resolution_note: verifyNotes ? `Verified by Officer (${verifyNotes}). Staff notes: ${task.notes || ''}` : `Verified by Officer. Staff notes: ${task.notes || ''}`,
+        resolution_documents: task.documents || [],
       }).eq('report_id', task.report_id);
 
+      if (updateError) throw updateError;
+
       // 2. Add Timeline Entry
-      await sb.from('report_timeline').insert({
+      const { error: timelineError } = await sb.from('report_timeline').insert({
         report_id: task.report_id,
         actor: `Officer: ${user.name}`,
         action: `Verified & Resolved - ${verifyNotes || 'No verification notes added'}`,
         at: new Date().toISOString()
       });
+
+      if (timelineError) throw timelineError;
 
       toast({
         title: 'Report Resolved',
@@ -560,18 +565,31 @@ export function OfficerTeamPage() {
                   {!selectedTaskForVerify.documents || selectedTaskForVerify.documents.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No documents uploaded.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {selectedTaskForVerify.documents.map((doc, i) => (
-                        <a 
-                          key={i} 
-                          href={doc.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 p-2 border rounded-md hover:bg-muted/50 transition-colors"
-                        >
-                          {doc.type === 'image' ? <ImageIcon className="w-4 h-4 text-blue-500" /> : <FileCheck className="w-4 h-4 text-orange-500" />}
-                          <span className="text-xs truncate">{doc.name}</span>
-                        </a>
+                        doc.type === 'image' ? (
+                          <a 
+                            key={i} 
+                            href={doc.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="block border rounded-md overflow-hidden hover:opacity-90 transition-opacity"
+                          >
+                            <img src={doc.url} alt={doc.name} className="w-full h-32 object-cover" />
+                            <div className="text-xs truncate p-1 text-center bg-muted/30">{doc.name}</div>
+                          </a>
+                        ) : (
+                          <a 
+                            key={i} 
+                            href={doc.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="flex flex-col items-center justify-center p-4 border rounded-md hover:bg-muted/50 transition-colors h-32"
+                          >
+                            <FileCheck className="w-8 h-8 text-orange-500 mb-2" />
+                            <span className="text-xs truncate max-w-full text-center px-2">{doc.name}</span>
+                          </a>
+                        )
                       ))}
                     </div>
                   )}
