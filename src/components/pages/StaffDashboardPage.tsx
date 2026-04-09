@@ -15,12 +15,24 @@ import {
   User, FileText, Image, Loader2, Sparkles
 } from 'lucide-react';
 
+interface ReportData {
+  report_id: string;
+  category?: string;
+  description?: string;
+  location_text?: string;
+  priority?: string;
+  submitted_at?: string;
+  status?: string;
+  assigned_department?: string;
+  [key: string]: any;
+}
+
 interface StaffTask {
   id: string;
   report_id: string;
   staff_user_id: string;
   assigned_by_officer_id: string | null;
-  status: 'assigned' | 'in_progress' | 'completed';
+  status: 'requested' | 'assigned' | 'in_progress' | 'completed';
   assigned_at: string;
   completed_at?: string;
   notes?: string;
@@ -40,7 +52,7 @@ export function StaffDashboardPage() {
   const { toast } = useToast();
   
   const [myTasks, setMyTasks] = useState<StaffTask[]>([]);
-  const [availableTasks, setAvailableTasks] = useState<Record<string, unknown>[]>([]);
+  const [availableTasks, setAvailableTasks] = useState<ReportData[]>([]);
   const [requestedTasks, setRequestedTasks] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<StaffTask | null>(null);
@@ -123,7 +135,7 @@ export function StaffDashboardPage() {
     }
   };
 
-  const handleRequestTask = async (report: Record<string, unknown>) => {
+  const handleRequestTask = async (report: ReportData) => {
     const sb = getSupabase();
     if (!sb || !user) return;
     
