@@ -204,7 +204,10 @@ export function MapPage({ onOpenReport }: MapPageProps) {
     ...r,
     lat: geoPositions[r.report_id]?.lat ?? r.lat,
     lng: geoPositions[r.report_id]?.lng ?? r.lng,
-  }));
+  })).filter(r => 
+    typeof r.lat === 'number' && typeof r.lng === 'number' && 
+    !isNaN(r.lat) && !isNaN(r.lng)
+  );
 
   return (
     <div className="space-y-4 animate-fade-in">

@@ -6,9 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Users, ClipboardList, CheckCircle2, Clock, AlertTriangle, 
-  User, Calendar, FileCheck, ExternalLink, TrendingUp
+  User, Calendar, FileCheck, ExternalLink, TrendingUp, Image as ImageIcon
 } from 'lucide-react';
 import { timeAgo } from '@/lib/data';
 import { useToast } from '@/components/ui/use-toast';
@@ -58,6 +61,8 @@ export function OfficerTeamPage() {
   const [myStaff, setMyStaff] = useState<StaffMember[]>([]);
   const [staffTasks, setStaffTasks] = useState<StaffTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedTaskForVerify, setSelectedTaskForVerify] = useState<StaffTask | null>(null);
+  const [verifyNotes, setVerifyNotes] = useState('');
   
   useEffect(() => {
     loadData();
@@ -157,7 +162,9 @@ export function OfficerTeamPage() {
     }
   };
 
-  const handleVerifyResolve = async (task: StaffTask) => {
+  const handleVerifyResolve = async () => {
+    if (!selectedTaskForVerify) return;
+    const task = selectedTaskForVerify;
     const sb = getSupabase();
     if (!sb || !user) return;
     
@@ -167,14 +174,14 @@ export function OfficerTeamPage() {
         status: 'Resolved',
         resolved_at: task.completed_at || new Date().toISOString(),
         resolved_by: user.id,
-        resolution_note: `Verified by Officer: ${task.notes || ''}`,
+        resolution_note: verifyNotes ? `Verified by Officer (${verifyNotes}). Staff notes: ${task.notes || ''}` : `Verified by Officer. Staff notes: ${task.notes || ''}`,
       }).eq('report_id', task.report_id);
 
       // 2. Add Timeline Entry
       await sb.from('report_timeline').insert({
         report_id: task.report_id,
         actor: `Officer: ${user.name}`,
-        action: `Verified & Resolved - ${task.notes || 'No notes'}`,
+        action: `Verified & Resolved - ${verifyNotes || 'No verification notes added'}`,
         at: new Date().toISOString()
       });
 
@@ -183,6 +190,8 @@ export function OfficerTeamPage() {
         description: `Successfully verified and resolved report ${task.report_id}`,
       });
       
+      setSelectedTaskForVerify(null);
+      setVerifyNotes('');
       loadData();
     } catch (err: unknown) {
       toast({ title: 'Error Resolving', description: (err as Error).message || 'An error occurred', variant: 'destructive' });
@@ -499,9 +508,9 @@ export function OfficerTeamPage() {
                         
                         {/* Final Resolution Button */}
                         {task.status === 'completed' && report?.status !== 'Resolved' && (
-                          <Button size="sm" className="h-7 text-xs bg-success hover:bg-success/90" onClick={() => handleVerifyResolve(task)}>
-                            <CheckCircle2 className="w-3 h-3 mr-1" />
-                            Verify & Mark Resolved
+                          <Button size="sm" className="h-7 text-xs bg-blue-500 hover:bg-blue-600" onClick={() => setSelectedTaskForVerify(task)}>
+                            <ClipboardList className="w-3 h-3 mr-1" />
+                            Review & Verify
                           </Button>
                         )}
                       </div>
@@ -513,6 +522,85 @@ export function OfficerTeamPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Verify Modal */}
+      <Dialog open={!!selectedTaskForVerify} onOpenChange={(open) => !open && setSelectedTaskForVerify(null)}>
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Verify Task Details</DialogTitle>
+            <DialogDescription>
+              Review the work submitted by {selectedTaskForVerify?.staff_name}.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedTaskForVerify && (
+            <div className="space-y-4 my-2">
+              <div className="bg-muted p-3 rounded-md">
+                <div className="font-mono text-sm font-bold text-primary mb-1">
+                  Report: {selectedTaskForVerify.report_id}
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium">Category:</span> {selectedTaskForVerify.report?.category}
+                </div>
+                <div className="text-sm mt-1">
+                  <span className="font-medium">Completed:</span> {selectedTaskForVerify.completed_at ? new Date(selectedTaskForVerify.completed_at).toLocaleString() : 'Unknown'}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold">Staff Notes</Label>
+                <div className="p-3 bg-secondary/50 rounded-md mt-1 text-sm whitespace-pre-wrap">
+                  {selectedTaskForVerify.notes || 'No notes provided by staff.'}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold">Documentation / Proof</Label>
+                <div className="mt-2 space-y-2">
+                  {!selectedTaskForVerify.documents || selectedTaskForVerify.documents.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No documents uploaded.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {selectedTaskForVerify.documents.map((doc, i) => (
+                        <a 
+                          key={i} 
+                          href={doc.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 p-2 border rounded-md hover:bg-muted/50 transition-colors"
+                        >
+                          {doc.type === 'image' ? <ImageIcon className="w-4 h-4 text-blue-500" /> : <FileCheck className="w-4 h-4 text-orange-500" />}
+                          <span className="text-xs truncate">{doc.name}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2 pt-2 border-t mt-4">
+                <Label className="font-semibold text-sm">Add Verification Notes (Optional)</Label>
+                <Textarea 
+                  placeholder="E.g., Looks good, resolution confirmed."
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  className="resize-none h-20"
+                />
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setSelectedTaskForVerify(null)}>
+              Cancel
+            </Button>
+            <Button className="bg-success hover:bg-success/90" onClick={handleVerifyResolve}>
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Verify & Resolve
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
