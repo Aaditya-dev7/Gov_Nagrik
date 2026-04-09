@@ -74,15 +74,14 @@ export function OfficerTeamPage() {
       console.log('Officer details:', { id: user.id, department: user.department });
 
       // Load staff in this officer's department
-      // We filter by role and department (case-insensitive where possible)
+      // Fetch all staff members (temporarily without dept filter to debug)
       const { data: staffData, error: staffError } = await sb
         .from('profiles')
-        .select('id, full_name, email, department, created_at, role')
-        .eq('role', 'staff')
-        .ilike('department', user.department || '');
-      
-      console.log('Fetched staffData:', staffData, 'Error:', staffError);
-      
+        .select('id, full_name, email, department, created_at')
+        .ilike('role', '%staff%');
+        
+      console.log('DEBUG: Fetched all staff:', staffData, 'Error:', staffError);
+        
       if (staffError) {
         console.error('Error fetching staff members:', staffError);
         // We'll proceed with empty array if there's an error

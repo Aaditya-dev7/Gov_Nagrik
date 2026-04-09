@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { 
   ClipboardList, Upload, CheckCircle, Clock, MapPin, Calendar, 
-  User, FileText, Image, Loader2
+  User, FileText, Image, Loader2, Sparkles
 } from 'lucide-react';
 
 interface StaffTask {
